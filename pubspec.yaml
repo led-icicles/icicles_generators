@@ -1,0 +1,24 @@
+name: icicles_generators
+description: >-
+  Parametric, audio-reactive generators and effects for icicles animations: the
+  generator and effect contracts, the parameter schema and bindings, song-wide
+  audio features, the baker that renders a generator into an animation, the
+  effect runner and the out-of-process plugin protocol.
+version: 0.5.0
+publish_to: "none"
+repository: https://github.com/led-icicles/icicles_generators
+
+environment:
+  sdk: ^3.5.3
+
+dependencies:
+  collection: ^1.19.1
+  equatable: ">=2.0.7 <4.0.0"
+  icicles_animation_dart:
+    git:
+      url: git@github.com:led-icicles/icicles_animation_dart.git
+      ref: v3.2.0
+
+dev_dependencies:
+  lints: ^6.1.0
+  test: ^1.33.0
