@@ -50,6 +50,7 @@ void renderGeneratorFrames(Generator generator, BakeRequest request, BakedFrameC
     frameCount: request.frameCount,
     audio: needsAudioFeatures(generator.info, request.bindings, macros: request.macros) ? request.audio : null,
     tempo: request.tempo,
+    beats: request.beats,
     audioOrigin: request.audioOrigin,
     macros: request.macros,
     seed: setup.seed,

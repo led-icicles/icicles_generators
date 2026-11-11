@@ -1,13 +1,14 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import '../time/beat_grid.dart';
 import '../time/tempo.dart';
 import 'audio_feature_extractor.dart';
 import 'audio_feature_key.dart';
 
 /// The audio features at one instant, all in `0..1` except [beatIndex] and
 /// [bpm]; every value is 0 without a soundtrack (and the beat fields are 0
-/// without a tempo).
+/// without a beat clock — a [BeatGrid] or a [Tempo]).
 final class AudioFrame {
   final Float32List _columns;
 
@@ -20,11 +21,11 @@ final class AudioFrame {
   /// 1 on a beat, decaying exponentially (`exp(-6 · beatPhase)`).
   final double beatPulse;
 
-  /// Index of the current beat since the tempo's first beat (negative
-  /// before it).
+  /// Index of the current beat since the first beat of the grid or tempo
+  /// (negative before it).
   final int beatIndex;
 
-  /// The tempo, 0 without one.
+  /// The tempo, 0 without a beat clock.
   final double bpm;
 
   AudioFrame._(this._columns,
@@ -34,12 +35,32 @@ final class AudioFrame {
   static final silent = AudioFrame._(Float32List(AudioFeatureKey.columnCount));
 
   /// A frame of the [AudioFeatureKey.columnCount] column values (copied),
-  /// with the beat fields of [tempo] at [time].
-  factory AudioFrame.fromColumns(List<double> columns, {Tempo? tempo, Duration time = Duration.zero}) {
+  /// with the beat fields at [time] of [beats] (the real beats and downbeats
+  /// of the music) when given, else of the constant [tempo]; all zero
+  /// without either.
+  factory AudioFrame.fromColumns(
+    List<double> columns, {
+    Tempo? tempo,
+    BeatGrid? beats,
+    Duration time = Duration.zero,
+  }) {
     if (columns.length != AudioFeatureKey.columnCount) {
       throw ArgumentError.value(columns.length, 'columns', 'Must have ${AudioFeatureKey.columnCount} values.');
     }
     final data = Float32List.fromList(columns);
+    if (beats != null) {
+      final position = beats.beatPositionAt(time);
+      final beat = position.floor();
+      final phase = position - beat;
+      return AudioFrame._(
+        data,
+        beatPhase: phase,
+        barPhase: beats.barPhaseAt(time),
+        beatPulse: math.exp(-6 * phase),
+        beatIndex: beat,
+        bpm: beats.bpm,
+      );
+    }
     if (tempo == null) return AudioFrame._(data);
     final position = tempo.beatPosition(time);
     final beat = position.floor();

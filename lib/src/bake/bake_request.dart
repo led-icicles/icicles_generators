@@ -6,6 +6,7 @@ import '../generator/generator.dart';
 import '../generator/generator_exception.dart';
 import '../generator/generator_info.dart';
 import '../params/param_binding.dart';
+import '../time/beat_grid.dart';
 import '../time/frame_grid.dart';
 import '../time/tempo.dart';
 
@@ -30,8 +31,14 @@ final class BakeRequest extends Equatable {
   /// Song-wide features, `null` without a soundtrack.
   final AudioFeatures? audio;
 
-  /// The beat grid on the same clock as [audio], `null` without one.
+  /// The constant beat grid on the same clock as [audio], `null` without
+  /// one. The fallback beat clock when [beats] is `null`.
   final Tempo? tempo;
+
+  /// The real beats (and downbeats) of the music on the same clock as
+  /// [audio], `null` without a beat tracker's result. Wins over [tempo] for
+  /// the beat fields and the beat-based bindings.
+  final BeatGrid? beats;
 
   /// Time on the [audio]/[tempo] clock of generator time 0 (the song time
   /// at the clip's source start).
@@ -52,6 +59,7 @@ final class BakeRequest extends Equatable {
     this.bindings = const {},
     this.audio,
     this.tempo,
+    this.beats,
     this.audioOrigin = Duration.zero,
     this.name,
     this.macros = const {},
@@ -64,6 +72,7 @@ final class BakeRequest extends Equatable {
     Map<String, ParamBinding> bindings = const {},
     AudioFeatures? audio,
     Tempo? tempo,
+    BeatGrid? beats,
     Duration audioOrigin = Duration.zero,
     String? name,
     Map<String, ParamBinding> macros = const {},
@@ -74,6 +83,7 @@ final class BakeRequest extends Equatable {
         bindings: bindings,
         audio: audio,
         tempo: tempo,
+        beats: beats,
         audioOrigin: audioOrigin,
         name: name,
         macros: macros,
@@ -84,7 +94,7 @@ final class BakeRequest extends Equatable {
   bool get bindingsUseAudioFeatures => bindingsUseAudio(bindings, macros);
 
   /// Whether the bindings (or a macro one of them reads) depend on the
-  /// audio clock: the analysed audio or the tempo.
+  /// audio clock: the analysed audio or the beat clock (tempo / beats).
   bool get bindingsUseAudioClock => bindingsUseAudio(bindings, macros) || bindingsUseTempo(bindings, macros);
 
   /// Grid time of all frames.
@@ -120,7 +130,7 @@ final class BakeRequest extends Equatable {
   }
 
   @override
-  List<Object?> get props => [setup, frameCount, bindings, audio?.contentHash, tempo, audioOrigin, name, macros];
+  List<Object?> get props => [setup, frameCount, bindings, audio?.contentHash, tempo, beats, audioOrigin, name, macros];
 }
 
 /// Whether a generator with [info] baked with [bindings] reads the analysed

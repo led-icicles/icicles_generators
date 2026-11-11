@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import '../time/beat_grid.dart';
 import '../time/tempo.dart';
 import 'audio_feature_key.dart';
 import 'audio_frame.dart';
@@ -87,8 +88,9 @@ final class AudioFeatures {
   }
 
   /// The features at song time [time], linearly interpolated between rows;
-  /// all zero outside `[0, duration)`. The beat fields come from [tempo].
-  AudioFrame sampleAt(Duration time, {Tempo? tempo}) {
+  /// all zero outside `[0, duration)`. The beat fields come from [beats]
+  /// when given, else from [tempo] (see [AudioFrame.fromColumns]).
+  AudioFrame sampleAt(Duration time, {Tempo? tempo, BeatGrid? beats}) {
     const columns = AudioFeatureKey.columnCount;
     final values = Float32List(columns);
     if (!time.isNegative && time < duration && frameCount > 0) {
@@ -102,7 +104,7 @@ final class AudioFeatures {
         values[c] = _data[a + c] * (1 - f) + _data[b + c] * f;
       }
     }
-    return AudioFrame.fromColumns(values, tempo: tempo, time: time);
+    return AudioFrame.fromColumns(values, tempo: tempo, beats: beats, time: time);
   }
 
   /// A stable hash of the content (`fnv1a64:<16 hex digits>`), a cache key

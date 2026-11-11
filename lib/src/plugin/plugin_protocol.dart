@@ -2,6 +2,7 @@ import 'package:icicles_animation_dart/icicles_animation_dart.dart';
 
 import '../generator/generator.dart';
 import '../generator/generator_exception.dart';
+import '../time/beat_grid.dart';
 import '../time/tempo.dart';
 import 'plugin_connection.dart';
 
@@ -15,10 +16,12 @@ const pluginProtocolVersion = 1;
 ///   [{info, params}]}` (`effects` is missing from plugins built before
 ///   effects existed).
 /// - host → plugin `bake {requestId, generatorId, version, setup, frameCount,
-///   name, bindings, macros, tempo, audioOriginUs, audioHash}` (`macros`:
+///   name, bindings, macros, tempo, beats, audioOriginUs, audioHash}` (`macros`:
 ///   the composition's macro bindings by id, since 0.5.0 — an older plugin
 ///   ignores the key and its `MacroBinding`s decode to nothing, so those
-///   parameters take their defaults), with the
+///   parameters take their defaults; `beats`: the real beat grid in the
+///   `BeatGridJson` form, since 0.6.0, optional — an older plugin ignores it
+///   and follows `tempo`), with the
 ///   `AudioFeatures` bytes as payload the first time a hash is used on the
 ///   connection (the plugin caches them by `audioHash`).
 /// - plugin → host `frames {requestId, first, count}` with a payload of
@@ -31,7 +34,7 @@ const pluginProtocolVersion = 1;
 ///   payload: hands the plugin features for a later `apply` (no reply; the
 ///   plugin caches them by hash like a bake's).
 /// - host → plugin `apply {requestId, effectId, version, setup, frameCount,
-///   bindings, macros, tempo, audioOriginUs, audioHash}` with the input frames as
+///   bindings, macros, tempo, beats, audioOriginUs, audioHash}` with the input frames as
 ///   payload in the layout of `frames` (`u16 durationMs` + RGB per frame,
 ///   `frameCount` of them); answered like a bake with `frames` of the output
 ///   and `done`, or `error`.
@@ -95,6 +98,12 @@ abstract final class PluginProtocol {
     }
     return null;
   }
+
+  /// The `beats` header field: [BeatGridJson.toJson].
+  static Map<String, Object?>? beatsToJson(BeatGrid? beats) => BeatGridJson.toJson(beats);
+
+  /// Decodes [beatsToJson]; `null` for a missing or malformed value.
+  static BeatGrid? beatsFromJson(Object? json) => BeatGridJson.fromJson(json);
 
   static GeneratorErrorKind errorKind(Object? name) =>
       GeneratorErrorKind.values.where((k) => k.name == name).firstOrNull ?? GeneratorErrorKind.pluginFailed;

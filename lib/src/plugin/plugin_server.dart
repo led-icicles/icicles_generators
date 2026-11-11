@@ -142,6 +142,7 @@ BakeRequest _requestOf(Map<String, Object?> header, AudioFeatures? audio) {
     macros: ParamBindingJson.bindingsFromJson(header['macros']),
     audio: audio,
     tempo: PluginProtocol.tempoFromJson(header['tempo']),
+    beats: PluginProtocol.beatsFromJson(header['beats']),
     audioOrigin: Duration(microseconds: origin is int ? origin : 0),
     name: header['name'] is String ? header['name'] as String : null,
   );

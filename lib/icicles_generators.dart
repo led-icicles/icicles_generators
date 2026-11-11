@@ -35,6 +35,7 @@ export 'src/params/param_binding_json.dart';
 export 'src/params/param_resolver.dart';
 export 'src/params/param_spec.dart';
 export 'src/params/param_values.dart';
+export 'src/time/beat_grid.dart';
 export 'src/time/frame_grid.dart';
 export 'src/time/tempo.dart';
 export 'src/util/audio_range.dart';

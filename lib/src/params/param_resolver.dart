@@ -6,21 +6,24 @@ import 'package:icicles_animation_dart/icicles_animation_dart.dart';
 import '../audio/audio_feature_key.dart';
 import '../audio/audio_features.dart';
 import '../audio/audio_frame.dart';
+import '../time/beat_grid.dart';
 import '../time/tempo.dart';
 import '../util/color.dart';
 import 'param_binding.dart';
 import 'param_spec.dart';
 import 'param_values.dart';
 
-/// The BPM of the beat-based bindings when the request has no tempo (then
-/// the beats are counted on clip time from the clip start).
+/// The BPM of the beat-based bindings when the request has no beat clock
+/// (neither beats nor a tempo; then the beats are counted on clip time from
+/// the clip start).
 const fallbackBpm = 120.0;
 
 /// Evaluates the parameter bindings frame by frame on a frame grid.
 ///
 /// Frame `i` is at generator time `framerate.frameStart(i)`, which is song
-/// time `audioOrigin + framerate.frameStart(i)` on the clock of [audio] and
-/// [tempo]. Audio followers, random glides and envelopes are stepped once
+/// time `audioOrigin + framerate.frameStart(i)` on the clock of [audio],
+/// [beats] and [tempo]. The beat clock is [beats] (the real beats) when
+/// given, else [tempo]. Audio followers, random glides and envelopes are stepped once
 /// per frame, so [at] is meant to be called in order; asking for an earlier
 /// frame replays from frame 0 and a later one steps through the frames in
 /// between, so the result never depends on the call pattern.
@@ -41,6 +44,7 @@ final class ParamResolver {
   final int frameCount;
   final AudioFeatures? audio;
   final Tempo? tempo;
+  final BeatGrid? beats;
   final Duration audioOrigin;
   final int seed;
 
@@ -62,6 +66,7 @@ final class ParamResolver {
     required this.frameCount,
     this.audio,
     this.tempo,
+    this.beats,
     this.audioOrigin = Duration.zero,
     Map<String, ParamBinding> macros = const {},
     this.seed = 0,
@@ -105,8 +110,10 @@ final class ParamResolver {
     final songTime = audioOrigin + start;
     final features = audio;
     final frame = features != null
-        ? features.sampleAt(songTime, tempo: tempo)
-        : (tempo == null ? AudioFrame.silent : AudioFrame.fromColumns(_silentColumns, tempo: tempo, time: songTime));
+        ? features.sampleAt(songTime, tempo: tempo, beats: beats)
+        : (!_hasBeatClock
+            ? AudioFrame.silent
+            : AudioFrame.fromColumns(_silentColumns, tempo: tempo, beats: beats, time: songTime));
     final dt = index == 0 ? framerate.frameDuration(0) : start - framerate.frameStart(index - 1);
     final f = _Frame(index: index, start: start, songTime: songTime, dt: dt, audio: frame);
     _macroValues.clear();
@@ -165,7 +172,7 @@ final class ParamResolver {
       };
 
   double _audioValue(String key, AudioBinding binding, _Frame f) {
-    final available = binding.feature.isColumn ? audio != null : tempo != null;
+    final available = binding.feature.isColumn ? audio != null : _hasBeatClock;
     if (!available) return binding.min;
     final input = f.audio[binding.feature].clamp(0.0, 1.0);
     final smoothed = _follow((_state[key] as double?) ?? 0, input, binding, f.dt);
@@ -183,9 +190,9 @@ final class ParamResolver {
   }
 
   double _beatValue(BeatBinding binding, Duration songTime) {
-    final t = tempo;
-    if (t == null) return binding.min;
-    final position = t.beatPosition(songTime) / binding.periodBeats + binding.phase;
+    final grid = _gridPosition(songTime);
+    if (grid == null) return binding.min;
+    final position = grid / binding.periodBeats + binding.phase;
     final p = position - position.floor();
     return binding.min + (binding.max - binding.min) * binding.shape.at(p);
   }
@@ -197,19 +204,37 @@ final class ParamResolver {
 
   // Beat clocks.
 
-  /// Beats on the song's grid at [songTime] (the tempo), or at [fallbackBpm]
-  /// on clip time [start] without one — what the random, step and envelope
-  /// bindings count beats and bars with.
-  double _gridBeats(Duration songTime, Duration start) {
-    final t = tempo;
-    return t != null ? t.beatPosition(songTime) : _seconds(start) * fallbackBpm / 60;
+  bool get _hasBeatClock => beats != null || tempo != null;
+
+  /// The BPM of the beat clock: the beats', else the tempo's, else
+  /// [fallbackBpm].
+  double get _clockBpm => beats?.bpm ?? tempo?.bpm ?? fallbackBpm;
+
+  /// Beats on the song's beat clock at [songTime] (the real beats, else the
+  /// tempo), or null without a clock.
+  double? _gridPosition(Duration songTime) {
+    final grid = beats;
+    if (grid != null) return grid.beatPositionAt(songTime);
+    return tempo?.beatPosition(songTime);
   }
 
+  /// Beats on the song's beat clock at [songTime], or at [fallbackBpm] on
+  /// clip time [start] without one — what the random, step and envelope
+  /// bindings count beats and bars with.
+  double _gridBeats(Duration songTime, Duration start) => _gridPosition(songTime) ?? _seconds(start) * fallbackBpm / 60;
+
+  /// Bars on the song's beat clock at [songTime] (between the real
+  /// downbeats, else every 4 beats of the tempo), or at [fallbackBpm] on
+  /// clip time without one — what the per-bar random, step and bar-trigger
+  /// bindings count bars with.
+  double _gridBars(Duration songTime, Duration start) =>
+      beats?.barPositionAt(songTime) ?? _gridBeats(songTime, start) / 4;
+
   /// Clip-local beats at [start]: seconds × bpm / 60.
-  double _clipBeats(Duration start) => _seconds(start) * (tempo?.bpm ?? fallbackBpm) / 60;
+  double _clipBeats(Duration start) => _seconds(start) * _clockBpm / 60;
 
   /// Seconds per beat of the grid.
-  double get _beatSeconds => 60 / (tempo?.bpm ?? fallbackBpm);
+  double get _beatSeconds => 60 / _clockBpm;
 
   static double _seconds(Duration d) => d.inMicroseconds / Duration.microsecondsPerSecond;
 
@@ -248,7 +273,7 @@ final class ParamResolver {
   double _randomValue(String key, RandomBinding binding, _Frame f) {
     final (int hold, double holdSeconds) = switch (binding.mode) {
       RandomMode.perBeat => (_gridBeats(f.songTime, f.start).floor(), _beatSeconds),
-      RandomMode.perBar => ((_gridBeats(f.songTime, f.start) / 4).floor(), 4 * _beatSeconds),
+      RandomMode.perBar => (_gridBars(f.songTime, f.start).floor(), 4 * _beatSeconds),
       RandomMode.perTime => (
           f.start.inMicroseconds ~/ binding.interval.inMicroseconds,
           _seconds(binding.interval),
@@ -274,7 +299,7 @@ final class ParamResolver {
 
   double _stepValue(StepBinding binding, _Frame f) {
     final n = binding.steps.length;
-    final position = _gridBeats(f.songTime, f.start) / 4 * binding.stepsPerBar;
+    final position = _gridBars(f.songTime, f.start) * binding.stepsPerBar;
     final global = position.floor();
     final phase = position - global;
     final i = global % n;
@@ -310,8 +335,7 @@ final class ParamResolver {
       case BeatTrigger():
         return _gridBeats(f.songTime, f.start).floor() != _gridBeats(f.songTime - f.dt, f.start - f.dt).floor();
       case BarTrigger():
-        return (_gridBeats(f.songTime, f.start) / 4).floor() !=
-            (_gridBeats(f.songTime - f.dt, f.start - f.dt) / 4).floor();
+        return _gridBars(f.songTime, f.start).floor() != _gridBars(f.songTime - f.dt, f.start - f.dt).floor();
       case OnsetTrigger(:final threshold):
         return _risingEdge('$key/edge', audio == null ? 0.0 : f.audio.onset, threshold);
       case RangeHitTrigger(:final lowHz, :final highHz, :final threshold):

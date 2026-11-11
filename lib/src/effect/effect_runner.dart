@@ -59,6 +59,7 @@ final class EffectRunner {
           frameCount: request.frameCount,
           audio: effectNeedsAudioFeatures(effect.info, request.bindings, macros: request.macros) ? request.audio : null,
           tempo: request.tempo,
+          beats: request.beats,
           audioOrigin: request.audioOrigin,
           macros: request.macros,
           seed: request.setup.seed,

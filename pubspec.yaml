@@ -4,7 +4,7 @@ description: >-
   generator and effect contracts, the parameter schema and bindings, song-wide
   audio features, the baker that renders a generator into an animation, the
   effect runner and the out-of-process plugin protocol.
-version: 0.5.0
+version: 0.6.0
 publish_to: "none"
 repository: https://github.com/led-icicles/icicles_generators
 

@@ -1,3 +1,22 @@
+## 0.6.0
+
+- `BeatGrid` (`lib/src/time/beat_grid.dart`): the real beats of a piece of music as instants — `beats`,
+  `downbeats` (a subset), `bpm`, `confidence`, `source` (`'beat-this'` / `'autocorrelation'` / any label);
+  `BeatGrid.regular(tempo, length:)` builds one from a `Tempo`. Clock math: `beatPositionAt`, `beatIndexAt`,
+  `phaseAt`, `barPositionAt`, `barPhaseAt` (bars between downbeats, 4 beats from the first beat without any;
+  outside the first/last beat the mean `beatPeriod` extrapolates), `nearestBeat`, `beatsBetween`,
+  `downbeatsBetween`, `isDownbeat`, `shifted(offset)`, `toTempo()` (`bpm` from the first beat, clamped to the
+  tempo range), `meanBpm` (the beat list's own mean tempo). Equatable; `BeatGridJson.toJson` / `fromJson` (`{beatsUs, downbeatsUs, bpm,
+  confidence, source}`, malformed → `null`).
+- The beat clock of a bake may be a `BeatGrid`: `BakeRequest.beats` (and `forLength(beats:)`, part of equality),
+  `AudioFeatures.sampleAt(t, tempo:, beats:)`, `AudioFrame.fromColumns(…, beats:)`, `ParamResolver(beats:)`. When
+  `beats` is given it wins over `tempo` for `beatPhase`/`barPhase`/`beatIndex`/`beatPulse`/`bpm`, the
+  `BeatBinding` LFO, the beat/bar modes of `RandomBinding`, `StepBinding` (bars between the downbeats),
+  `EnvelopeTrigger.beat`/`.bar` and `KeyTime.beats` (the grid's `bpm`); `Tempo` stays the fallback, and
+  without either the behaviour is unchanged (`fallbackBpm` on clip time, `min` for the LFO).
+- Plugin protocol: `bake` and `apply` headers carry an optional `beats` (`BeatGridJson`;
+  `PluginProtocol.beatsToJson` / `beatsFromJson`). Older plugins ignore the key and follow `tempo`.
+
 ## 0.5.0
 
 - Parameter animation (Phase G7, package A). New `ParamBinding` kinds, all with `ParamBindingJson` shapes,

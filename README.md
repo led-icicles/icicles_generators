@@ -79,12 +79,12 @@ Rules:
 |---|---|
 | `frameIndex`, `time`, `delta`, `seconds`, `deltaSeconds` | frame `i` starts at `framerate.frameStart(i)` (generator time, 0 at the clip's source start) |
 | `params` | `ParamValues` resolved at this frame: `number(id)`, `integer`, `flag`, `choice`, `color`, `palette` |
-| `audio` | `AudioFrame`: `level`, `bass`, `mid`, `treble`, `onset`, `peakFrequency`, `bands`/`band(i)`/`bandAt(t)`/`bandAtHz(hz)` (16 mel bands), `energyBetween(lowHz, highHz)`, `beatPhase`, `barPhase`, `beatPulse`, `beatIndex`, `bpm` — all 0 without a soundtrack/tempo |
+| `audio` | `AudioFrame`: `level`, `bass`, `mid`, `treble`, `onset`, `peakFrequency`, `bands`/`band(i)`/`bandAt(t)`/`bandAtHz(hz)` (16 mel bands), `energyBetween(lowHz, highHz)`, `beatPhase`, `barPhase`, `beatPulse`, `beatIndex`, `bpm` — all 0 without a soundtrack / beat clock (a `BeatGrid` or a `Tempo`) |
 | `random` | the bake's seeded `Random` |
 | `setup` | `xCount`, `yCount`, `radioPanelsCount`, `radioPanelPixelCount`, `framerate`, `seed` |
 
 Set `GeneratorInfo.usesAudio` when the generator reads `ctx.audio` (including the beat fields); otherwise the
-baker passes silence (the beat fields still follow the tempo), so a bake never depends on audio it doesn't
+baker passes silence (the beat fields still follow the beat clock), so a bake never depends on audio it doesn't
 declare.
 
 ### Parameter schema
@@ -112,8 +112,8 @@ Every parameter has a `ParamBinding` (sealed); number and integer parameters can
 - `AudioBinding(feature, min, max, attack, release, curve, invert)` — a one-pole follower over an
   `AudioFeatureKey` (level, bass, mid, treble, onset, peakFrequency, band0…band15, beatPulse, beatPhase,
   barPhase), shaped by `pow(v, curve)`, mapped to min..max; `min` without audio.
-- `BeatBinding(shape: pulse|saw|sine|square, periodBeats ¼…16, phase, min, max)` — an LFO on the tempo; `min`
-  without one.
+- `BeatBinding(shape: pulse|saw|sine|square, periodBeats ¼…16, phase, min, max)` — an LFO on the beat clock (the
+  request's `beats`, else its `tempo`); `min` without one.
 - `RampBinding(from, to, curve)` — from the first to the last frame, eased by a `RampCurve` (the library's
   `Curves`).
 - `KeyframeBinding(keys, timeBase: seconds|beats, loop)` — keyframes: each `Keyframe(at, value, easing)` holds a
@@ -221,14 +221,25 @@ macro's value is clamped to the parameter like any modulated value. `needsAudioF
 `ParamResolver` evaluates the bindings frame by frame (`at(frameIndex)`), stepping the stateful ones — audio
 followers, random glides, envelopes and trigger edges — once per frame, so call it in order; asking for an earlier
 frame (or `reset()`) replays from frame 0, so the result never depends on the call pattern. It takes the request's
-`macros` and `seed` (the setup's seed in a bake, the fallback seed of random bindings). Beat-based bindings
-without a tempo count 120 BPM (`fallbackBpm`) on clip time.
+`macros` and `seed` (the setup's seed in a bake, the fallback seed of random bindings). The beat clock of every
+beat-based binding (and of the `AudioFrame` beat fields) is the request's `beats` — a `BeatGrid` of the real beats
+and downbeats found by a beat tracker (bars run between the downbeats) — else its constant `tempo`; beat-based
+bindings without either count 120 BPM (`fallbackBpm`) on clip time.
+
+### Beat grids
+
+`BeatGrid { beats, downbeats, bpm, confidence, source }` holds the beat instants of a song (`source`:
+`'beat-this'`, `'autocorrelation'`, …); `BeatGrid.regular(tempo, length:)` builds one from a `Tempo`.
+`beatPositionAt(t)` / `beatIndexAt` / `phaseAt` / `barPositionAt` / `barPhaseAt` are the clock (outside the first
+and last beat the mean `beatPeriod` extrapolates), `nearestBeat` / `beatsBetween` / `downbeatsBetween` serve
+timelines, `shifted(offset)` moves it to another clock and `toTempo()` reduces it to a constant tempo (`bpm` from
+the first beat). `BeatGridJson` is its JSON form (also the plugin protocol's `beats` field).
 
 ### Audio features
 
 `AudioFeatureExtractor.extract(monoPcm, sampleRate)` (or `add` chunks + `finish`) analyses a whole song into
 `AudioFeatures`: one row per 10 ms with level, bass/mid/treble, spectral-flux onset, peak frequency and 16 mel
-bands (40 Hz–16 kHz), each normalized to 0..1 per song. `sampleAt(t, tempo:)` gives an `AudioFrame`;
+bands (40 Hz–16 kHz), each normalized to 0..1 per song. `sampleAt(t, tempo:, beats:)` gives an `AudioFrame`;
 `contentHash` keys caches.
 
 ### Frequency ranges
@@ -263,13 +274,14 @@ final animation = bakeGenerator(const PlasmaGenerator(), BakeRequest.forLength(
   bindings: {'brightness': const AudioBinding(feature: AudioFeatureKey.bass, min: 0.3, max: 1)},
   audio: features, // song-wide AudioFeatures, or null
   tempo: Tempo(bpm: 128), // on the same clock as the audio, or null
+  beats: beatGrid, // the real beats (BeatGrid) on the same clock; wins over tempo when given
   audioOrigin: const Duration(seconds: 12), // song time of generator time 0
 ));
 final index = animation.toIndex();
 ```
 
 At most `maxBakeLength` (10 minutes); failures are `GeneratorException`s with a `GeneratorErrorKind`.
-`frameIndexAt`/`frameCountFor` give the frame grid, `Tempo` the beat grid. `needsAudioFeatures` /
+`frameIndexAt`/`frameCountFor` give the frame grid, `Tempo` / `BeatGrid` the beat clock. `needsAudioFeatures` /
 `needsAudioClock` tell whether a generator + bindings read the audio / depend on the song position.
 
 ## Built-in generators
@@ -466,13 +478,13 @@ without the app. `print` goes to stderr; never write to stdout.
 The protocol: length-prefixed messages (`u32` header length, `u32` payload length, JSON header, binary payload).
 The host sends `hello {protocol: 1}` and gets a `manifest` (generator and effect infos and parameter schemas;
 `effects` is missing from plugins built before 0.4.0); a
-`bake {requestId, generatorId, setup, frameCount, bindings, macros, tempo, audioOriginUs, audioHash}` (with the
+`bake {requestId, generatorId, setup, frameCount, bindings, macros, tempo, beats, audioOriginUs, audioHash}` (with the
 audio features as payload once per hash) is answered by `frames` (per frame `u16` duration in ms + RGB bytes) and
 `done`, or `error {kind, message}`. Effects: `audio {audioHash}` (+ the features as payload, cached by hash, no
 reply) hands the plugin a song once, then `apply {requestId, effectId, version, setup, frameCount, bindings,
-macros, tempo, audioOriginUs, audioHash}` carries the input frames as payload in the `frames` layout and is
+macros, tempo, beats, audioOriginUs, audioHash}` carries the input frames as payload in the `frames` layout and is
 answered like a bake. `bindings` and `macros` are `ParamBindingJson` maps; a plugin built with an older package
-ignores `macros` and the binding kinds it does not know (they decode to nothing, so those parameters take their
+ignores `macros`, `beats` (a `BeatGridJson` map, since 0.6.0) and the binding kinds it does not know (they decode to nothing, so those parameters take their
 defaults) — the host sends everything, the plugin's package decides what it understands. On the host, `GeneratorPluginClient` does the handshake, rebuilds a baked animation with
 `FrameAssembler` (byte-identical to `bakeGenerator` in process) and returns the views of `applyEffect(effectId,
 request, inputs)` (identical to an in-process `EffectRunner`).
