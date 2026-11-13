@@ -6,6 +6,7 @@ import '../generator/generator.dart';
 import '../generator/generator_info.dart';
 import '../generator/localized_text.dart';
 import '../params/param_spec.dart';
+import '../reactive/reactive_target.dart';
 import '../util/color.dart';
 import '../util/palette.dart';
 
@@ -60,7 +61,22 @@ abstract final class ManifestJson {
         'category': info.category.name,
         'usesAudio': info.usesAudio,
         'defaultLengthMs': info.defaultLength.inMilliseconds,
+        if (info.reactiveTargets.isNotEmpty) 'reactiveTargets': reactiveTargetsToJson(info.reactiveTargets),
       };
+
+  /// `{"speed": "speed", "size": "radius"}`: the parameter id per target.
+  static Map<String, Object?> reactiveTargetsToJson(Map<ReactiveTarget, String> targets) =>
+      {for (final MapEntry(:key, :value) in targets.entries) key.name: value};
+
+  /// Decodes [reactiveTargetsToJson]; unknown targets and non-string ids are
+  /// skipped, anything else gives an empty map.
+  static Map<ReactiveTarget, String> reactiveTargetsFromJson(Object? json) {
+    if (json is! Map<String, Object?>) return const {};
+    return Map.unmodifiable({
+      for (final MapEntry(:key, :value) in json.entries)
+        if (ReactiveTarget.fromName(key) case final target? when value is String && value.isNotEmpty) target: value,
+    });
+  }
 
   static GeneratorInfo? infoFromJson(Object? json) {
     if (json is! Map<String, Object?>) return null;
@@ -80,6 +96,7 @@ abstract final class ManifestJson {
       ),
       usesAudio: json['usesAudio'] == true,
       defaultLength: length is int && length > 0 ? Duration(milliseconds: length) : const Duration(seconds: 10),
+      reactiveTargets: reactiveTargetsFromJson(json['reactiveTargets']),
     );
   }
 
@@ -91,6 +108,7 @@ abstract final class ManifestJson {
         'category': info.category.name,
         'usesAudio': info.usesAudio,
         'defaultLengthMs': info.defaultLength.inMilliseconds,
+        if (info.reactiveTargets.isNotEmpty) 'reactiveTargets': reactiveTargetsToJson(info.reactiveTargets),
       };
 
   static EffectInfo? effectInfoFromJson(Object? json) {
@@ -111,6 +129,7 @@ abstract final class ManifestJson {
       ),
       usesAudio: json['usesAudio'] == true,
       defaultLength: length is int && length > 0 ? Duration(milliseconds: length) : const Duration(seconds: 10),
+      reactiveTargets: reactiveTargetsFromJson(json['reactiveTargets']),
     );
   }
 

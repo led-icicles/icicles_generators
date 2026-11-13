@@ -6,6 +6,7 @@ import 'package:icicles_animation_dart/icicles_animation_dart.dart';
 import '../generator/generator.dart';
 import '../generator/generator_exception.dart';
 import '../params/param_resolver.dart';
+import '../reactive/reactive_instance.dart';
 import 'bake_request.dart';
 import 'frame_assembler.dart';
 import 'frame_codec.dart';
@@ -36,9 +37,11 @@ Animation bakeGenerator(Generator generator, BakeRequest request) {
 /// animation, calling [onFrame] after each frame (the plugin side of the
 /// protocol; [bakeGenerator] assembles the same frames).
 ///
-/// The audio features are passed to the generator only when it or a binding
-/// uses them ([needsAudioFeatures]), so a bake does not depend on audio it
-/// does not read.
+/// The audio features are passed to the generator only when it, a binding
+/// or the request's reactivity uses them ([needsAudioFeatures]), so a bake
+/// does not depend on audio it does not read. An active
+/// `BakeRequest.reactivity` wraps the instance in a
+/// [ReactiveGeneratorInstance].
 void renderGeneratorFrames(Generator generator, BakeRequest request, BakedFrameCallback onFrame) {
   request.validate();
   final setup = request.setup;
@@ -48,7 +51,9 @@ void renderGeneratorFrames(Generator generator, BakeRequest request, BakedFrameC
     bindings: request.bindings,
     framerate: framerate,
     frameCount: request.frameCount,
-    audio: needsAudioFeatures(generator.info, request.bindings, macros: request.macros) ? request.audio : null,
+    audio: needsAudioFeatures(generator.info, request.bindings, macros: request.macros, reactivity: request.reactivity)
+        ? request.audio
+        : null,
     tempo: request.tempo,
     beats: request.beats,
     audioOrigin: request.audioOrigin,
@@ -71,7 +76,9 @@ void renderGeneratorFrames(Generator generator, BakeRequest request, BakedFrameC
   final random = math.Random(setup.seed);
   final GeneratorInstance instance;
   try {
-    instance = generator.create(setup);
+    instance = request.reactivity.isActive
+        ? ReactiveGeneratorInstance(generator, setup, request.reactivity)
+        : generator.create(setup);
   } on Object catch (e) {
     throw GeneratorException(GeneratorErrorKind.renderFailed, '${generator.info.id} failed to start.', e);
   }

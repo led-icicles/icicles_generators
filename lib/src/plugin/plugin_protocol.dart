@@ -2,6 +2,7 @@ import 'package:icicles_animation_dart/icicles_animation_dart.dart';
 
 import '../generator/generator.dart';
 import '../generator/generator_exception.dart';
+import '../reactive/audio_reactivity.dart';
 import '../time/beat_grid.dart';
 import '../time/tempo.dart';
 import 'plugin_connection.dart';
@@ -13,15 +14,23 @@ const pluginProtocolVersion = 1;
 ///
 /// - host → plugin `hello {protocol}`; plugin → host
 ///   `manifest {protocol, pluginId, generators: [{info, params}], effects:
-///   [{info, params}]}` (`effects` is missing from plugins built before
-///   effects existed).
+///   [{info, params}], capabilities: ["reactivity"]}` (`effects` is missing
+///   from plugins built before effects existed; `capabilities` — since
+///   0.7.0 — lists what the plugin applies itself: [capabilityReactivity]
+///   means its bakes honour the `reactivity` header. A manifest without it
+///   is a plugin built before reactivity existed: the host then sends the
+///   request without `reactivity` and applies the generic brightness / hue /
+///   flash post-process to the returned frames itself
+///   (`ReactivePostProcessor`), so reactivity keeps working — only the speed,
+///   restart and size modes need the plugin's cooperation).
 /// - host → plugin `bake {requestId, generatorId, version, setup, frameCount,
 ///   name, bindings, macros, tempo, beats, audioOriginUs, audioHash}` (`macros`:
 ///   the composition's macro bindings by id, since 0.5.0 — an older plugin
 ///   ignores the key and its `MacroBinding`s decode to nothing, so those
 ///   parameters take their defaults; `beats`: the real beat grid in the
 ///   `BeatGridJson` form, since 0.6.0, optional — an older plugin ignores it
-///   and follows `tempo`), with the
+///   and follows `tempo`; `reactivity`: the `AudioReactivityJson` form of an
+///   active `BakeRequest.reactivity`, since 0.7.0, optional), with the
 ///   `AudioFeatures` bytes as payload the first time a hash is used on the
 ///   connection (the plugin caches them by `audioHash`).
 /// - plugin → host `frames {requestId, first, count}` with a payload of
@@ -47,6 +56,21 @@ abstract final class PluginProtocol {
   static const error = 'error';
   static const audio = 'audio';
   static const apply = 'apply';
+
+  /// The manifest capability of a plugin that applies the `reactivity`
+  /// header itself.
+  static const capabilityReactivity = 'reactivity';
+
+  /// The capabilities a plugin built with this version of the package has.
+  static const List<String> capabilities = [capabilityReactivity];
+
+  /// The `reactivity` header field: `null` for an inactive reactivity.
+  static Map<String, Object?>? reactivityToJson(AudioReactivity reactivity) =>
+      reactivity.isActive ? AudioReactivityJson.toJson(reactivity) : null;
+
+  /// Decodes [reactivityToJson]; [AudioReactivity.none] for a missing or
+  /// malformed value.
+  static AudioReactivity reactivityFromJson(Object? json) => AudioReactivityJson.fromJson(json) ?? AudioReactivity.none;
 
   /// Error kind of a bake whose audio hash the plugin does not have.
   static const audioMissing = 'audioMissing';

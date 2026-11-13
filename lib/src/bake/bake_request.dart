@@ -6,6 +6,7 @@ import '../generator/generator.dart';
 import '../generator/generator_exception.dart';
 import '../generator/generator_info.dart';
 import '../params/param_binding.dart';
+import '../reactive/audio_reactivity.dart';
 import '../time/beat_grid.dart';
 import '../time/frame_grid.dart';
 import '../time/tempo.dart';
@@ -53,6 +54,11 @@ final class BakeRequest extends Equatable {
   /// macro resolves to nothing).
   final Map<String, ParamBinding> macros;
 
+  /// Universal audio reactivity applied around the program
+  /// (`ReactiveGeneratorInstance` / `ReactiveEffectInstance`);
+  /// [AudioReactivity.none] by default.
+  final AudioReactivity reactivity;
+
   const BakeRequest({
     required this.setup,
     required this.frameCount,
@@ -63,6 +69,7 @@ final class BakeRequest extends Equatable {
     this.audioOrigin = Duration.zero,
     this.name,
     this.macros = const {},
+    this.reactivity = AudioReactivity.none,
   });
 
   /// A request covering `[0, length)` on the setup's frame grid.
@@ -76,6 +83,7 @@ final class BakeRequest extends Equatable {
     Duration audioOrigin = Duration.zero,
     String? name,
     Map<String, ParamBinding> macros = const {},
+    AudioReactivity reactivity = AudioReactivity.none,
   }) =>
       BakeRequest(
         setup: setup,
@@ -87,6 +95,7 @@ final class BakeRequest extends Equatable {
         audioOrigin: audioOrigin,
         name: name,
         macros: macros,
+        reactivity: reactivity,
       );
 
   /// Whether the bindings (or a macro one of them reads) read the analysed
@@ -96,6 +105,28 @@ final class BakeRequest extends Equatable {
   /// Whether the bindings (or a macro one of them reads) depend on the
   /// audio clock: the analysed audio or the beat clock (tempo / beats).
   bool get bindingsUseAudioClock => bindingsUseAudio(bindings, macros) || bindingsUseTempo(bindings, macros);
+
+  /// Whether the bindings, their macros or the reactivity read the analysed
+  /// audio.
+  bool get usesAudioFeatures => bindingsUseAudioFeatures || reactivity.usesAudioFeatures;
+
+  /// Whether the bindings, their macros or the reactivity depend on the
+  /// audio clock.
+  bool get usesAudioClock => bindingsUseAudioClock || reactivity.usesAudioFeatures || reactivity.usesTempo;
+
+  /// This request without its reactivity (what a plugin that cannot apply
+  /// it is asked for; the host post-processes the frames).
+  BakeRequest withoutReactivity() => BakeRequest(
+        setup: setup,
+        frameCount: frameCount,
+        bindings: bindings,
+        audio: audio,
+        tempo: tempo,
+        beats: beats,
+        audioOrigin: audioOrigin,
+        name: name,
+        macros: macros,
+      );
 
   /// Grid time of all frames.
   Duration get length => setup.framerate.frameStart(frameCount);
@@ -130,22 +161,28 @@ final class BakeRequest extends Equatable {
   }
 
   @override
-  List<Object?> get props => [setup, frameCount, bindings, audio?.contentHash, tempo, beats, audioOrigin, name, macros];
+  List<Object?> get props =>
+      [setup, frameCount, bindings, audio?.contentHash, tempo, beats, audioOrigin, name, macros, reactivity];
 }
 
-/// Whether a generator with [info] baked with [bindings] reads the analysed
-/// audio (then a bake needs `BakeRequest.audio`). [macros] are the
-/// request's macros: a [MacroBinding] reads the audio when its macro does.
+/// Whether a generator with [info] baked with [bindings] (and [reactivity])
+/// reads the analysed audio (then a bake needs `BakeRequest.audio`).
+/// [macros] are the request's macros: a [MacroBinding] reads the audio when
+/// its macro does; an active [reactivity] always does.
 bool needsAudioFeatures(GeneratorInfo info, Map<String, ParamBinding> bindings,
-        {Map<String, ParamBinding> macros = const {}}) =>
-    info.usesAudio || bindingsUseAudio(bindings, macros);
+        {Map<String, ParamBinding> macros = const {}, AudioReactivity reactivity = AudioReactivity.none}) =>
+    info.usesAudio || bindingsUseAudio(bindings, macros) || reactivity.usesAudioFeatures;
 
 /// Whether the output depends on the audio clock (audio features or the
 /// tempo), so the clip's position relative to the song matters
 /// (`audioOrigin`).
 bool needsAudioClock(GeneratorInfo info, Map<String, ParamBinding> bindings,
-        {Map<String, ParamBinding> macros = const {}}) =>
-    info.usesAudio || bindingsUseAudio(bindings, macros) || bindingsUseTempo(bindings, macros);
+        {Map<String, ParamBinding> macros = const {}, AudioReactivity reactivity = AudioReactivity.none}) =>
+    info.usesAudio ||
+    bindingsUseAudio(bindings, macros) ||
+    bindingsUseTempo(bindings, macros) ||
+    reactivity.usesAudioFeatures ||
+    reactivity.usesTempo;
 
 /// Whether any of [bindings] reads the analysed audio, following the
 /// [MacroBinding]s into [macros].

@@ -282,7 +282,26 @@ final index = animation.toIndex();
 
 At most `maxBakeLength` (10 minutes); failures are `GeneratorException`s with a `GeneratorErrorKind`.
 `frameIndexAt`/`frameCountFor` give the frame grid, `Tempo` / `BeatGrid` the beat clock. `needsAudioFeatures` /
-`needsAudioClock` tell whether a generator + bindings read the audio / depend on the song position.
+`needsAudioClock` tell whether a generator + bindings (+ reactivity) read the audio / depend on the song position.
+
+### Audio reactivity
+
+`BakeRequest.reactivity` (an `AudioReactivity`, `none` by default) makes *any* generator or effect react to the
+music without touching its bindings, LedFx style: one energy — the loudness of a frequency range (`range`
+preset or custom `lowHz`..`highHz`), gated by `threshold`, scaled by `sensitivity` (0–4), smoothed by an
+`attack`/`release` follower, optionally `invert`ed — drives the active `modes` (`ReactiveModeKind`, each a
+`ReactiveMode { min, max, … }`): `brightness` (frame brightness `min + (max − min) · energy`), `speed` (time runs
+at that rate: the program's own `speed` parameter when it has one, else a warp of the frame clock), `hue`
+(rotation in turns, by the energy or the loudest frequency), `flash` (an additive `flashColor` at `max` on every
+trigger — `beat` / `onset` / `range` — decaying over `decay`), `restart` (the program re-created with a derived
+seed on every trigger) and `size` (a declared size parameter set across its range). `AudioReactivity.defaults`
+is brightness on the lows; `ReactiveModeKind.withDepth` / `depthOf` map a mode to one 0–1 "depth" slider.
+
+Programs declare which of their parameters the modes drive natively in `GeneratorInfo.reactiveTargets` /
+`EffectInfo.reactiveTargets` (`{ReactiveTarget.speed: 'speed', ReactiveTarget.size: 'radius'}`); without a
+declaration the number parameters named `brightness`, `speed`, `size` and `hue` are taken by convention
+(`resolveReactiveTargets`). `bakeGenerator` / `renderGeneratorFrames` and `EffectRunner` wrap the instance in a
+`ReactiveGeneratorInstance` / `ReactiveEffectInstance`; `AudioReactivityJson` is the JSON form.
 
 ## Built-in generators
 
@@ -455,6 +474,11 @@ import 'package:icicles_generators/plugin.dart';
 
 Future<void> main() => runGeneratorPlugin(const [PulseGenerator()], pluginId: 'my.plugin', effects: const [DimEffect()]);
 ```
+
+A plugin built with this version applies `BakeRequest.reactivity` itself and says so with the manifest
+capability `reactivity`; for a plugin built before 0.7.0 the host client sends the request without it and runs the
+generic brightness / hue / flash post-process over the returned frames (`ReactivePostProcessor`) — the speed,
+restart and size modes need the plugin's cooperation.
 
 Compile it to a native executable on each target OS (`dart compile exe` does not cross-compile) and copy it into the
 visualizer's plugins folder, then press "Refresh" on the editor's Generators tab (the folder button there opens it):

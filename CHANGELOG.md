@@ -1,3 +1,32 @@
+## 0.7.0
+
+- Universal audio reactivity (`lib/src/reactive/`): `AudioReactivity` (Equatable; `none` default, `defaults` =
+  brightness on the lows at sensitivity 1, 10/150 ms) with `enabled`, `range: AudioRangePreset` + custom
+  `lowHz`/`highHz`, `sensitivity` (0–4), `attack`/`release`, `threshold`, `invert` and `modes:
+  Map<ReactiveModeKind, ReactiveMode>` — `brightness`, `speed`, `hue` (`hueSource` energy / frequency), `flash`
+  (`trigger` beat / onset / range, `decay`, `flashColor`), `restart` (`trigger`), `size`; `ReactiveMode { min,
+  max, … }`, `normalized`, `copyWith`, `withMode`, `isActive`, `usesAudioFeatures`, `usesTempo`, `audioRange`;
+  `ReactiveModeKind.defaultMode` / `withDepth(depth)` / `depthOf(mode)` for a one-slider UI. JSON via
+  `AudioReactivityJson.toJson` / `fromJson` (lenient; `modeToJson` / `modeFromJson`).
+- `BakeRequest.reactivity` (and `forLength(reactivity:)`, part of equality; `usesAudioFeatures` /
+  `usesAudioClock` / `withoutReactivity()`). `needsAudioFeatures`, `needsAudioClock`, `effectNeedsAudioFeatures`
+  and `effectNeedsAudioClock` take `reactivity:`. An active reactivity wraps the program in a
+  `ReactiveGeneratorInstance` / `ReactiveEffectInstance` inside `renderGeneratorFrames` / `bakeGenerator` /
+  `EffectRunner`: the `ReactiveEngine` turns each frame's audio into a `ReactiveFrame` (energy follower,
+  trigger edges, flash decay, time warp, restart count); native targets are written into the parameters
+  (`reactiveParams`), the speed warps the frame clock otherwise (`time`/`delta`), a restart re-creates the
+  instance with `ReactiveEngine.randomFor(seed, n)`, and `applyReactivePost` / `reactiveColor` dim, rotate and
+  flash the rendered frame (the generator keeps its own frame buffer, so its previous-frame contract holds).
+- `GeneratorInfo.reactiveTargets` / `EffectInfo.reactiveTargets: Map<ReactiveTarget, String>` (parameter id per
+  `ReactiveTarget.brightness | speed | size | hue`; in the manifest as `reactiveTargets`); empty means by
+  convention — `resolveReactiveTargets(declared, params)` takes the number parameters `brightness`, `speed`,
+  `size`, `hue`.
+- Plugin protocol: `bake` / `apply` headers carry an optional `reactivity` (`AudioReactivityJson`); the manifest
+  carries `capabilities: ["reactivity"]` (`PluginProtocol.capabilityReactivity`, `PluginManifest.capabilities`
+  / `supportsReactivity`). For a plugin without the capability the client sends the request without reactivity
+  and post-processes the returned frames itself (`ReactivePostProcessor`: brightness / hue / flash; speed,
+  restart and size need the plugin).
+
 ## 0.6.0
 
 - `BeatGrid` (`lib/src/time/beat_grid.dart`): the real beats of a piece of music as instants — `beats`,

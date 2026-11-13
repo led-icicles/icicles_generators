@@ -9,21 +9,27 @@ import '../generator/generator.dart';
 import '../generator/generator_exception.dart';
 import '../params/param_binding.dart';
 import '../params/param_resolver.dart';
+import '../reactive/audio_reactivity.dart';
+import '../reactive/reactive_instance.dart';
 import 'effect.dart';
 import 'effect_info.dart';
 
 /// Whether an effect with [info] run with [bindings] reads the analysed
 /// audio (then the run needs `BakeRequest.audio`).
 bool effectNeedsAudioFeatures(EffectInfo info, Map<String, ParamBinding> bindings,
-        {Map<String, ParamBinding> macros = const {}}) =>
-    info.usesAudio || bindingsUseAudio(bindings, macros);
+        {Map<String, ParamBinding> macros = const {}, AudioReactivity reactivity = AudioReactivity.none}) =>
+    info.usesAudio || bindingsUseAudio(bindings, macros) || reactivity.usesAudioFeatures;
 
 /// Whether the output depends on the audio clock (audio features or the
 /// tempo), so the clip's position relative to the song matters
 /// (`audioOrigin`).
 bool effectNeedsAudioClock(EffectInfo info, Map<String, ParamBinding> bindings,
-        {Map<String, ParamBinding> macros = const {}}) =>
-    info.usesAudio || bindingsUseAudio(bindings, macros) || bindingsUseTempo(bindings, macros);
+        {Map<String, ParamBinding> macros = const {}, AudioReactivity reactivity = AudioReactivity.none}) =>
+    info.usesAudio ||
+    bindingsUseAudio(bindings, macros) ||
+    bindingsUseTempo(bindings, macros) ||
+    reactivity.usesAudioFeatures ||
+    reactivity.usesTempo;
 
 /// Applies an [Effect] frame by frame on the frame grid of a [BakeRequest]:
 /// the app's compositor calls [applyAt] for every frame it renders with the
@@ -36,7 +42,8 @@ bool effectNeedsAudioClock(EffectInfo info, Map<String, ParamBinding> bindings,
 /// one starts the run over (a fresh instance and random, parameters replayed
 /// from frame 0), so the result depends only on the sequence of inputs since
 /// the last restart. Deterministic: the same effect, request, seed and
-/// inputs give the same views.
+/// inputs give the same views. An active `BakeRequest.reactivity` wraps the
+/// instance in a [ReactiveEffectInstance].
 ///
 /// Throws a [GeneratorException]: [GeneratorErrorKind.invalidRequest] /
 /// [GeneratorErrorKind.tooLong] for a bad request (at construction) or an
@@ -57,7 +64,10 @@ final class EffectRunner {
           bindings: request.bindings,
           framerate: request.setup.framerate,
           frameCount: request.frameCount,
-          audio: effectNeedsAudioFeatures(effect.info, request.bindings, macros: request.macros) ? request.audio : null,
+          audio: effectNeedsAudioFeatures(effect.info, request.bindings,
+                  macros: request.macros, reactivity: request.reactivity)
+              ? request.audio
+              : null,
           tempo: request.tempo,
           beats: request.beats,
           audioOrigin: request.audioOrigin,
@@ -114,7 +124,9 @@ final class EffectRunner {
     var instance = _instance;
     if (instance == null) {
       try {
-        instance = _instance = effect.create(setup);
+        instance = _instance = request.reactivity.isActive
+            ? ReactiveEffectInstance(effect, setup, request.reactivity)
+            : effect.create(setup);
       } on Object catch (e) {
         throw GeneratorException(GeneratorErrorKind.renderFailed, '${effect.info.id} failed to start.', e);
       }

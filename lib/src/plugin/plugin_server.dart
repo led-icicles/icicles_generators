@@ -56,6 +56,7 @@ Future<void> serveGeneratorPlugin(
               for (final effect in effectRegistry.effects)
                 ManifestJson.effectEntryToJson(EffectManifestEntry.of(effect)),
             ],
+            'capabilities': PluginProtocol.capabilities,
           }));
         case PluginProtocol.bake:
           _bake(message, registry, audioCache, connection, maxFramesBytes);
@@ -145,6 +146,7 @@ BakeRequest _requestOf(Map<String, Object?> header, AudioFeatures? audio) {
     beats: PluginProtocol.beatsFromJson(header['beats']),
     audioOrigin: Duration(microseconds: origin is int ? origin : 0),
     name: header['name'] is String ? header['name'] as String : null,
+    reactivity: PluginProtocol.reactivityFromJson(header['reactivity']),
   );
 }
 

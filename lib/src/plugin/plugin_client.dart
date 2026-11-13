@@ -12,6 +12,7 @@ import '../effect/effect_runner.dart';
 import '../generator/generator.dart';
 import '../generator/generator_exception.dart';
 import '../params/param_binding_json.dart';
+import '../reactive/reactive_instance.dart';
 import 'manifest_json.dart';
 import 'plugin_connection.dart';
 import 'plugin_protocol.dart';
@@ -26,12 +27,21 @@ final class PluginManifest extends Equatable {
   /// existed).
   final List<EffectManifestEntry> effects;
 
+  /// What the plugin applies itself (`PluginProtocol.capability…`; empty
+  /// for plugins built before 0.7.0).
+  final Set<String> capabilities;
+
   const PluginManifest({
     required this.pluginId,
     required this.protocol,
     required this.generators,
     this.effects = const [],
+    this.capabilities = const {},
   });
+
+  /// Whether the plugin applies the `reactivity` header itself; otherwise
+  /// the client post-processes its frames ([ReactivePostProcessor]).
+  bool get supportsReactivity => capabilities.contains(PluginProtocol.capabilityReactivity);
 
   /// The entry of [generatorId], or `null`.
   GeneratorManifestEntry? find(String generatorId) => generators.where((g) => g.info.id == generatorId).firstOrNull;
@@ -40,7 +50,7 @@ final class PluginManifest extends Equatable {
   EffectManifestEntry? findEffect(String effectId) => effects.where((e) => e.info.id == effectId).firstOrNull;
 
   @override
-  List<Object?> get props => [pluginId, protocol, generators, effects];
+  List<Object?> get props => [pluginId, protocol, generators, effects, capabilities];
 }
 
 /// The host side of the plugin protocol over one [PluginConnection]
@@ -118,11 +128,16 @@ final class GeneratorPluginClient {
         if (entry != null && effectIds.add(entry.info.id)) effects.add(entry);
       }
     }
+    final capabilities = <String>{};
+    if (reply.header['capabilities'] case final List<Object?> list) {
+      capabilities.addAll(list.whereType<String>());
+    }
     return _manifest = PluginManifest(
       pluginId: pluginId,
       protocol: pluginProtocolVersion,
       generators: List.unmodifiable(generators),
       effects: List.unmodifiable(effects),
+      capabilities: Set.unmodifiable(capabilities),
     );
   }
 
@@ -164,14 +179,18 @@ final class GeneratorPluginClient {
     return result;
   }
 
-  Future<Animation> _bake(String generatorId, BakeRequest request, Duration timeout) async {
+  Future<Animation> _bake(String generatorId, BakeRequest original, Duration timeout) async {
     _throwIfFailed();
     final entry = _manifest?.find(generatorId);
     if (entry == null) {
       throw GeneratorException(GeneratorErrorKind.unknownGenerator, 'The plugin has no generator "$generatorId".');
     }
-    request.validate();
-    final audio = needsAudioFeatures(entry.info, request.bindings, macros: request.macros) ? request.audio : null;
+    original.validate();
+    final (request, post) = _reactivityOf(original);
+    final audio =
+        needsAudioFeatures(entry.info, request.bindings, macros: request.macros, reactivity: request.reactivity)
+            ? request.audio
+            : null;
     return _run<Animation>(
       timeout: timeout,
       audio: audio,
@@ -179,6 +198,7 @@ final class GeneratorPluginClient {
         requestId,
         FrameAssembler(request.setup, name: request.name ?? entry.info.name.en),
         request.frameCount,
+        post,
       ),
       send: (requestId, hash, sendAudio) => PluginMessage(
         {
@@ -195,6 +215,7 @@ final class GeneratorPluginClient {
           if (request.beats != null) 'beats': PluginProtocol.beatsToJson(request.beats),
           'audioOriginUs': request.audioOrigin.inMicroseconds,
           'audioHash': hash,
+          if (PluginProtocol.reactivityToJson(request.reactivity) case final reactivity?) 'reactivity': reactivity,
         },
         sendAudio ? audio!.toBytes() : null,
       ),
@@ -202,9 +223,21 @@ final class GeneratorPluginClient {
     );
   }
 
+  /// The request the plugin gets and the host-side post-processor: a plugin
+  /// that applies reactivity itself gets [request] as is; an older one gets
+  /// it without the reactivity and the client applies the generic modes to
+  /// its frames ([ReactivePostProcessor]).
+  (BakeRequest, ReactivePostProcessor?) _reactivityOf(BakeRequest request) {
+    if (!request.reactivity.isActive || (_manifest?.supportsReactivity ?? false)) return (request, null);
+    return (
+      request.withoutReactivity(),
+      ReactivePostProcessor.applies(request) ? ReactivePostProcessor(request) : null,
+    );
+  }
+
   Future<List<AnimationView>> _applyEffect(
     String effectId,
-    BakeRequest request,
+    BakeRequest original,
     List<AnimationView> inputs,
     Duration timeout,
   ) async {
@@ -213,7 +246,8 @@ final class GeneratorPluginClient {
     if (entry == null) {
       throw GeneratorException(GeneratorErrorKind.unknownGenerator, 'The plugin has no effect "$effectId".');
     }
-    request.validate();
+    original.validate();
+    final (request, post) = _reactivityOf(original);
     if (inputs.length != request.frameCount) {
       throw GeneratorException(
         GeneratorErrorKind.invalidRequest,
@@ -233,11 +267,14 @@ final class GeneratorPluginClient {
         throw GeneratorException(GeneratorErrorKind.invalidRequest, 'Input view $i does not fit the layout.', e);
       }
     }
-    final audio = effectNeedsAudioFeatures(entry.info, request.bindings, macros: request.macros) ? request.audio : null;
+    final audio =
+        effectNeedsAudioFeatures(entry.info, request.bindings, macros: request.macros, reactivity: request.reactivity)
+            ? request.audio
+            : null;
     return _run<List<AnimationView>>(
       timeout: timeout,
       audio: audio,
-      pending: (requestId) => _PendingApply(requestId, setup, inputs),
+      pending: (requestId) => _PendingApply(requestId, setup, inputs, post),
       send: (requestId, hash, sendAudio) {
         if (sendAudio) {
           _connection.send(PluginMessage({'type': PluginProtocol.audio, 'audioHash': hash}, audio!.toBytes()));
@@ -256,6 +293,7 @@ final class GeneratorPluginClient {
             if (request.beats != null) 'beats': PluginProtocol.beatsToJson(request.beats),
             'audioOriginUs': request.audioOrigin.inMicroseconds,
             'audioHash': hash,
+            if (PluginProtocol.reactivityToJson(request.reactivity) case final reactivity?) 'reactivity': reactivity,
           },
           payload,
         );
@@ -366,10 +404,13 @@ abstract base class _Pending {
   final int requestId;
   final GeneratorSetup setup;
   final int frameCount;
+
+  /// The host-side reactivity for a plugin without the capability.
+  final ReactivePostProcessor? post;
   final completer = Completer<Object>();
   int _received = 0;
 
-  _Pending(this.requestId, this.setup, this.frameCount);
+  _Pending(this.requestId, this.setup, this.frameCount, this.post);
 
   /// Frames received so far.
   int get received => _received;
@@ -390,6 +431,7 @@ abstract base class _Pending {
       if (_received >= frameCount) {
         throw const GeneratorException(GeneratorErrorKind.protocolError, 'Too many frames.');
       }
+      post?.process(_received, payload, o + 2);
       takeFrame(Duration(milliseconds: view.getUint16(o, Endian.little)), payload, o + 2);
       _received++;
     }
@@ -399,7 +441,8 @@ abstract base class _Pending {
 final class _PendingBake extends _Pending {
   final FrameAssembler assembler;
 
-  _PendingBake(int requestId, this.assembler, int frameCount) : super(requestId, assembler.setup, frameCount);
+  _PendingBake(int requestId, this.assembler, int frameCount, ReactivePostProcessor? post)
+      : super(requestId, assembler.setup, frameCount, post);
 
   @override
   void takeFrame(Duration duration, Uint8List payload, int offset) => assembler.add(duration, payload, offset);
@@ -412,7 +455,8 @@ final class _PendingApply extends _Pending {
   final List<AnimationView> inputs;
   final List<AnimationView> outputs = [];
 
-  _PendingApply(int requestId, GeneratorSetup setup, this.inputs) : super(requestId, setup, inputs.length);
+  _PendingApply(int requestId, GeneratorSetup setup, this.inputs, ReactivePostProcessor? post)
+      : super(requestId, setup, inputs.length, post);
 
   @override
   void takeFrame(Duration duration, Uint8List payload, int offset) {

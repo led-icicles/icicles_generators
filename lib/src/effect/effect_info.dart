@@ -1,6 +1,7 @@
 import 'package:equatable/equatable.dart';
 
 import '../generator/localized_text.dart';
+import '../reactive/reactive_target.dart';
 
 /// Where an effect is listed in the bin.
 enum EffectCategory {
@@ -42,6 +43,11 @@ final class EffectInfo extends Equatable {
   /// Length of a new effect clip.
   final Duration defaultLength;
 
+  /// The effect's own parameters audio reactivity drives natively, by
+  /// [ReactiveTarget] (see `GeneratorInfo.reactiveTargets`; empty = by
+  /// convention).
+  final Map<ReactiveTarget, String> reactiveTargets;
+
   const EffectInfo({
     required this.id,
     required this.version,
@@ -50,8 +56,18 @@ final class EffectInfo extends Equatable {
     required this.category,
     this.usesAudio = false,
     this.defaultLength = const Duration(seconds: 10),
+    this.reactiveTargets = const {},
   });
 
   @override
-  List<Object?> get props => [id, version, name, description, category, usesAudio, defaultLength];
+  List<Object?> get props => [
+        id,
+        version,
+        name,
+        description,
+        category,
+        usesAudio,
+        defaultLength,
+        for (final target in ReactiveTarget.values) reactiveTargets[target],
+      ];
 }
