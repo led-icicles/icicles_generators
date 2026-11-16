@@ -1,3 +1,32 @@
+## 0.8.0
+
+- Drum hits (`lib/src/time/drum_hits.dart`): `DrumClass` (`kick`, `snare`, `toms`, `hihat`, `cymbals`),
+  `DrumHit { time, strength }`, `DrumHits` (per-class sorted hits, `source` — `'adtof'` from `icicles_dsp` —,
+  `strongestIn(cls, from, to)` over `(from, to]`, `lastAtOrBefore`, `count`, content-hash equality, `empty`) and
+  `DrumHitsJson`.
+- `BakeRequest.drums` (and `forLength(drums:)`, part of equality), read with `audio`; `ParamResolver(drums:)`.
+  `AudioFeatures.sampleAt(…, drums:, span:)` / `AudioFrame.fromColumns(…, drums:, span:)`: `hasDrums`,
+  `drumHit(cls)` / `anyDrumHit` (the hits whose onset falls into the frame's span `(t − dt, t]`, so every hit
+  reaches exactly one frame at any frame rate) and `drumPulse(cls)` (80 ms decay from the last hit).
+- `AudioFeatureKey.kickPulse` / `snarePulse` / `hihatPulse` (drum keys after the beat keys; `isDrum`,
+  `usesAnalysis`; `isBeat` is now exactly the three beat keys). An `AudioBinding` on a drum key uses the audio
+  features.
+- Drum triggers: `EnvelopeTrigger.drumHit(drum:)` (`DrumHitTrigger`, JSON `"trigger": "drumHit", "drum": …`),
+  `ReactiveTrigger.kick` / `snare` / `hihat` / `drums` (a flash peaks at `max ·` the hit's strength;
+  `isDrum`, `drumClass`, `usesTempo`), `AudioSource.kick` / `snare` / `hihat` (drum pulses). All of them follow
+  the beat clock while the request has no drum hits.
+- `icicles.strobe` version 2: triggers `kick` (the new default), `snare`, `hihat`, `cymbals`, `drums` (any) on
+  top of the beat grid and the audio features; `accent` (how much weaker hits flash dimmer) and `minGapMs` (the
+  shortest time between two flashes, replacing the fixed 60 ms). Clips that store `trigger: beat` keep the grid.
+- Photosensitive epilepsy limit (WCAG 2.3.1, Ofcom/ITC, Harding: at most 3 flashes a second): Strobe's
+  `minGapMs` defaults to 335 ms (every kick up to 179 BPM still flashes; hi-hats and rolls are thinned; the
+  audio triggers of version 1 clips, which had 60 ms, are thinned too unless the clip sets `minGapMs`), the
+  `rate` description warns below half a beat, and the flash mode of `AudioReactivity` retriggers at most every
+  `AudioReactivity.minFlashInterval` (335 ms).
+- Plugin protocol: optional `drums` header field (`DrumHitsJson`) in `bake` / `apply`, sent when the request has
+  drum hits; `PluginProtocol.drumsToJson` / `drumsFromJson`. Older plugins ignore it (their drum triggers follow
+  the beat clock).
+
 ## 0.7.0
 
 - Universal audio reactivity (`lib/src/reactive/`): `AudioReactivity` (Equatable; `none` default, `defaults` =

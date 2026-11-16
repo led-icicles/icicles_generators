@@ -7,6 +7,7 @@ import '../audio/audio_feature_key.dart';
 import '../audio/audio_features.dart';
 import '../audio/audio_frame.dart';
 import '../time/beat_grid.dart';
+import '../time/drum_hits.dart';
 import '../time/tempo.dart';
 import '../util/color.dart';
 import 'param_binding.dart';
@@ -45,6 +46,9 @@ final class ParamResolver {
   final AudioFeatures? audio;
   final Tempo? tempo;
   final BeatGrid? beats;
+
+  /// The drum hits on the [audio] clock; read only with [audio].
+  final DrumHits? drums;
   final Duration audioOrigin;
   final int seed;
 
@@ -67,6 +71,7 @@ final class ParamResolver {
     this.audio,
     this.tempo,
     this.beats,
+    this.drums,
     this.audioOrigin = Duration.zero,
     Map<String, ParamBinding> macros = const {},
     this.seed = 0,
@@ -109,12 +114,12 @@ final class ParamResolver {
     final start = framerate.frameStart(index);
     final songTime = audioOrigin + start;
     final features = audio;
+    final dt = index == 0 ? framerate.frameDuration(0) : start - framerate.frameStart(index - 1);
     final frame = features != null
-        ? features.sampleAt(songTime, tempo: tempo, beats: beats)
+        ? features.sampleAt(songTime, tempo: tempo, beats: beats, drums: drums, span: dt)
         : (!_hasBeatClock
             ? AudioFrame.silent
             : AudioFrame.fromColumns(_silentColumns, tempo: tempo, beats: beats, time: songTime));
-    final dt = index == 0 ? framerate.frameDuration(0) : start - framerate.frameStart(index - 1);
     final f = _Frame(index: index, start: start, songTime: songTime, dt: dt, audio: frame);
     _macroValues.clear();
     for (final MapEntry(key: id, value: binding) in macros.entries) {
@@ -172,7 +177,7 @@ final class ParamResolver {
       };
 
   double _audioValue(String key, AudioBinding binding, _Frame f) {
-    final available = binding.feature.isColumn ? audio != null : _hasBeatClock;
+    final available = binding.feature.usesAnalysis ? audio != null : _hasBeatClock;
     if (!available) return binding.min;
     final input = f.audio[binding.feature].clamp(0.0, 1.0);
     final smoothed = _follow((_state[key] as double?) ?? 0, input, binding, f.dt);
@@ -340,6 +345,10 @@ final class ParamResolver {
         return _risingEdge('$key/edge', audio == null ? 0.0 : f.audio.onset, threshold);
       case RangeHitTrigger(:final lowHz, :final highHz, :final threshold):
         return _risingEdge('$key/edge', audio == null ? 0.0 : f.audio.energyBetween(lowHz, highHz), threshold);
+      case DrumHitTrigger(:final drum):
+        // Without drum hits (no detection) the beat clock stands in.
+        if (!f.audio.hasDrums) return _fires(key, EnvelopeTrigger.beat, f);
+        return (drum == null ? f.audio.anyDrumHit : f.audio.drumHit(drum)) > 0;
     }
   }
 

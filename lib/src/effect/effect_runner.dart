@@ -70,6 +70,7 @@ final class EffectRunner {
               : null,
           tempo: request.tempo,
           beats: request.beats,
+          drums: request.drums,
           audioOrigin: request.audioOrigin,
           macros: request.macros,
           seed: request.setup.seed,

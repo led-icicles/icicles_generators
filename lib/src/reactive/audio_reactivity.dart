@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:equatable/equatable.dart';
 import 'package:icicles_animation_dart/icicles_animation_dart.dart';
 
+import '../time/drum_hits.dart';
 import '../util/audio_range.dart';
 import '../util/color.dart';
 
@@ -94,11 +95,38 @@ enum ReactiveTrigger {
 
   /// The (gained, gated) energy of the frequency range rising through
   /// [AudioReactivity.triggerLevel].
-  range;
+  range,
+
+  /// A detected kick (the drum hits of the analysis); a flash peaks at the
+  /// hit's strength. The beat clock stands in while the music has no drum
+  /// hits.
+  kick,
+
+  /// Like [kick] for the snare.
+  snare,
+
+  /// Like [kick] for the hi-hats.
+  hihat,
+
+  /// Like [kick] for a hit of any drum class.
+  drums;
 
   static ReactiveTrigger? fromName(String? name) => values.where((t) => t.name == name).firstOrNull;
 
-  bool get usesTempo => this == beat;
+  /// Whether the trigger follows the beat clock (the drum triggers as their
+  /// fallback).
+  bool get usesTempo => this == beat || isDrum;
+
+  /// Whether the trigger fires on the detected drum hits.
+  bool get isDrum => drumClass != null || this == drums;
+
+  /// The drum class of [kick] / [snare] / [hihat].
+  DrumClass? get drumClass => switch (this) {
+        kick => DrumClass.kick,
+        snare => DrumClass.snare,
+        hihat => DrumClass.hihat,
+        _ => null,
+      };
 }
 
 /// What the hue mode follows.
@@ -210,6 +238,12 @@ final class AudioReactivity extends Equatable {
 
   /// The level the onset / range triggers fire at (rising edge).
   static const triggerLevel = 0.5;
+
+  /// The shortest time between two flashes of the flash mode: at most 3
+  /// flashes a second, the limit of the photosensitive epilepsy guidelines
+  /// (WCAG 2.3.1, Ofcom/ITC, Harding). Every kick up to 179 BPM still
+  /// flashes; hi-hats and rolls are thinned.
+  static const minFlashInterval = Duration(milliseconds: 335);
 
   /// Nothing: disabled, no modes.
   static const none = AudioReactivity();

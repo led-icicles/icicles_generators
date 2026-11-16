@@ -26,6 +26,7 @@ BakeRequest _request({
   required AudioReactivity reactivity,
   AudioFeatures? audio,
   Tempo? tempo,
+  DrumHits? drums,
   double seconds = 2,
   Map<String, ParamBinding> bindings = const {},
 }) =>
@@ -35,6 +36,7 @@ BakeRequest _request({
       bindings: bindings,
       audio: audio,
       tempo: tempo,
+      drums: drums,
       reactivity: reactivity,
     );
 
@@ -448,6 +450,35 @@ void main() {
       expect(red(30), 255, reason: 'the beat at 1 s');
     });
 
+    test('flash keeps to at most 3 flashes a second', () {
+      const flash = AudioReactivity(
+        enabled: true,
+        modes: {
+          ReactiveModeKind.flash:
+              ReactiveMode(min: 0, max: 1, trigger: ReactiveTrigger.beat, decay: Duration(milliseconds: 30)),
+        },
+      );
+      // 240 BPM: a beat every 250 ms (frames of 1/30 s, see _request).
+      final animation = bakeGenerator(
+        solid,
+        _request(
+            reactivity: flash, tempo: Tempo(bpm: 240), bindings: const {'color': ConstantBinding(Color(0xFF000000))}),
+      );
+      final starts = <int>[];
+      var previous = 0;
+      for (var i = 0; i < 60; i++) {
+        final red = _frameAt(animation, i).frame.pixels.first.red;
+        if (red == 255 && previous < 255) starts.add(i);
+        previous = red;
+      }
+      expect(starts, isNotEmpty);
+      for (var i = 1; i < starts.length; i++) {
+        expect((starts[i] - starts[i - 1]) / 30,
+            greaterThanOrEqualTo(AudioReactivity.minFlashInterval.inMilliseconds / 1000));
+      }
+      expect(starts.length, lessThanOrEqualTo(6), reason: '2 s at most 3 a second');
+    });
+
     test('flash on onsets with a color; no flash without a trigger source', () {
       final onsets = syntheticFeatures(seconds: 3);
       const flash = AudioReactivity(
@@ -585,6 +616,23 @@ void main() {
       }
       final applies = pipe.sent.where((m) => m.type == PluginProtocol.apply).toList();
       expect(applies.single.header['reactivity'], AudioReactivityJson.toJson(speed));
+      await pipe.client.close();
+    });
+
+    test('drum hits cross the protocol; a kick flash bakes byte-identically', () async {
+      final pipe = _Pipe(const [_Dot()]);
+      await pipe.client.handshake();
+      final kickFlash = brightnessOnly.withMode(
+        ReactiveModeKind.flash,
+        const ReactiveMode(min: 0, max: 1, trigger: ReactiveTrigger.kick, decay: Duration(milliseconds: 100)),
+      );
+      final drums = syntheticDrums(seconds: 2);
+      final request = _request(
+          reactivity: kickFlash, audio: constantFeatures(0.5), tempo: Tempo(bpm: 120), drums: drums, seconds: 2);
+      final baked = await pipe.client.bake('test.dot', request);
+      expect(baked.toBytes(), bakeBytes(const _Dot(), request));
+      final header = pipe.sent.where((m) => m.type == PluginProtocol.bake).single.header;
+      expect(DrumHitsJson.fromJson(header['drums']), drums);
       await pipe.client.close();
     });
 

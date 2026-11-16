@@ -79,7 +79,7 @@ Rules:
 |---|---|
 | `frameIndex`, `time`, `delta`, `seconds`, `deltaSeconds` | frame `i` starts at `framerate.frameStart(i)` (generator time, 0 at the clip's source start) |
 | `params` | `ParamValues` resolved at this frame: `number(id)`, `integer`, `flag`, `choice`, `color`, `palette` |
-| `audio` | `AudioFrame`: `level`, `bass`, `mid`, `treble`, `onset`, `peakFrequency`, `bands`/`band(i)`/`bandAt(t)`/`bandAtHz(hz)` (16 mel bands), `energyBetween(lowHz, highHz)`, `beatPhase`, `barPhase`, `beatPulse`, `beatIndex`, `bpm` — all 0 without a soundtrack / beat clock (a `BeatGrid` or a `Tempo`) |
+| `audio` | `AudioFrame`: `level`, `bass`, `mid`, `treble`, `onset`, `peakFrequency`, `bands`/`band(i)`/`bandAt(t)`/`bandAtHz(hz)` (16 mel bands), `energyBetween(lowHz, highHz)`, `beatPhase`, `barPhase`, `beatPulse`, `beatIndex`, `bpm`, `hasDrums`, `drumHit(cls)`, `anyDrumHit`, `drumPulse(cls)` — all 0 without a soundtrack / beat clock (a `BeatGrid` or a `Tempo`) / drum hits |
 | `random` | the bake's seeded `Random` |
 | `setup` | `xCount`, `yCount`, `radioPanelsCount`, `radioPanelPixelCount`, `framerate`, `seed` |
 
@@ -136,7 +136,8 @@ Every parameter has a `ParamBinding` (sealed); number and integer parameters can
 - `EnvelopeBinding(trigger, attack, decay, sustain, release, sustainLevel, min, max, retrigger)` — an AHDSR
   envelope fired by an `EnvelopeTrigger`: `.beat`, `.bar` (the beat grid; 120 BPM without a tempo),
   `.onset(threshold)` or `.rangeHit(lowHz, highHz, threshold)` (the onset feature / the energy of a frequency range
-  rising through the threshold; never without audio). The level rises 0 → 1 over `attack`, falls to `sustainLevel`
+  rising through the threshold; never without audio) or `.drumHit(drum:)` (a detected drum hit of one class, any
+  without `drum`; the beat grid without drum hits). The level rises 0 → 1 over `attack`, falls to `sustainLevel`
   over `decay`, holds for `sustain`, falls to 0 over `release` (durations ≤ 30 s), and the value is
   `min + (max − min) · level`. A trigger while the envelope runs restarts the attack from the current level with
   `retrigger` (the default) and is ignored otherwise.
@@ -235,6 +236,21 @@ and last beat the mean `beatPeriod` extrapolates), `nearestBeat` / `beatsBetween
 timelines, `shifted(offset)` moves it to another clock and `toTempo()` reduces it to a constant tempo (`bpm` from
 the first beat). `BeatGridJson` is its JSON form (also the plugin protocol's `beats` field).
 
+### Drum hits
+
+`DrumHits` holds what a drum transcription model found in a song (`source` `'adtof'` from `icicles_dsp`): per
+`DrumClass` (`kick`, `snare`, `toms`, `hihat`, `cymbals`) the sorted `DrumHit { time, strength }` (strength `0..1`,
+1 = among the loudest hits of the class). `strongestIn(cls, from, to)` covers `(from, to]`, `lastAtOrBefore`
+finds the previous hit; equality is a content hash. `BakeRequest.drums` carries them on the audio clock (read
+together with `audio`). Hits are events, not feature columns: the `AudioFrame` of a frame reports the hits whose
+onset falls into the frame's own span `(t − dt, t]` — `drumHit(cls)` / `anyDrumHit` (the strength, 0 = none) —
+so every hit reaches exactly one frame at any frame rate, and `drumPulse(cls)` (also the binding keys
+`kickPulse` / `snarePulse` / `hihatPulse`) decays from the last hit over 80 ms. The drum triggers — `Strobe`'s
+`kick` / `snare` / `hihat` / `cymbals` / `drums`, `ReactiveTrigger.kick` / `snare` / `hihat` / `drums` (a flash
+peaks at the hit's strength), `EnvelopeTrigger.drumHit(drum:)` and the `AudioSource` drum pulses — follow the
+beat clock while the request has no drum hits. `DrumHitsJson` is the JSON form (the plugin protocol's `drums`
+field, since 0.8.0).
+
 ### Audio features
 
 `AudioFeatureExtractor.extract(monoPcm, sampleRate)` (or `add` chunks + `finish`) analyses a whole song into
@@ -275,6 +291,7 @@ final animation = bakeGenerator(const PlasmaGenerator(), BakeRequest.forLength(
   audio: features, // song-wide AudioFeatures, or null
   tempo: Tempo(bpm: 128), // on the same clock as the audio, or null
   beats: beatGrid, // the real beats (BeatGrid) on the same clock; wins over tempo when given
+  drums: drumHits, // detected drum hits (DrumHits) on the same clock, read with audio
   audioOrigin: const Duration(seconds: 12), // song time of generator time 0
 ));
 final index = animation.toIndex();
@@ -293,7 +310,8 @@ preset or custom `lowHz`..`highHz`), gated by `threshold`, scaled by `sensitivit
 `ReactiveMode { min, max, … }`): `brightness` (frame brightness `min + (max − min) · energy`), `speed` (time runs
 at that rate: the program's own `speed` parameter when it has one, else a warp of the frame clock), `hue`
 (rotation in turns, by the energy or the loudest frequency), `flash` (an additive `flashColor` at `max` on every
-trigger — `beat` / `onset` / `range` — decaying over `decay`), `restart` (the program re-created with a derived
+trigger — `beat` / `onset` / `range`, or a detected `kick` / `snare` / `hihat` / `drums` hit (the flash peaks at
+the hit's strength; the beat clock without drum hits) — decaying over `decay`), `restart` (the program re-created with a derived
 seed on every trigger) and `size` (a declared size parameter set across its range). `AudioReactivity.defaults`
 is brightness on the lows; `ReactiveModeKind.withDepth` / `depthOf` map a mode to one 0–1 "depth" slider.
 
@@ -314,7 +332,7 @@ Categories (`GeneratorCategory`): basic, motion, nature, particles, geometry, au
 | `icicles.solid` | basic | one color everywhere |
 | `icicles.gradient` | basic | a palette scrolling across/along the icicles |
 | `icicles.rainbow` | basic | hues running over the icicles |
-| `icicles.strobe` | basic | beat-synced flashes (120 BPM without a tempo) or flashes on hits of a frequency range / bass / onset |
+| `icicles.strobe` | basic | flashes on detected drum hits (default: kick; `accent` dims weaker hits, `minGapMs` limits the rate; the beat grid without drum hits), beat-synced flashes (120 BPM without a tempo) or flashes on hits of a frequency range / bass / onset |
 | `icicles.breathe` | basic | the whole grid breathing (sine / exponential / linear, bindable rate) |
 | `icicles.heartbeat` | basic | a double pulse at a heart rate, as a center glow or the whole grid |
 | `icicles.wipe` | motion | a directional fill (6 directions, soft edge) that loops or holds — a transition layer |
@@ -502,13 +520,13 @@ without the app. `print` goes to stderr; never write to stdout.
 The protocol: length-prefixed messages (`u32` header length, `u32` payload length, JSON header, binary payload).
 The host sends `hello {protocol: 1}` and gets a `manifest` (generator and effect infos and parameter schemas;
 `effects` is missing from plugins built before 0.4.0); a
-`bake {requestId, generatorId, setup, frameCount, bindings, macros, tempo, beats, audioOriginUs, audioHash}` (with the
+`bake {requestId, generatorId, setup, frameCount, bindings, macros, tempo, beats, drums, audioOriginUs, audioHash}` (with the
 audio features as payload once per hash) is answered by `frames` (per frame `u16` duration in ms + RGB bytes) and
 `done`, or `error {kind, message}`. Effects: `audio {audioHash}` (+ the features as payload, cached by hash, no
 reply) hands the plugin a song once, then `apply {requestId, effectId, version, setup, frameCount, bindings,
-macros, tempo, beats, audioOriginUs, audioHash}` carries the input frames as payload in the `frames` layout and is
+macros, tempo, beats, drums, audioOriginUs, audioHash}` carries the input frames as payload in the `frames` layout and is
 answered like a bake. `bindings` and `macros` are `ParamBindingJson` maps; a plugin built with an older package
-ignores `macros`, `beats` (a `BeatGridJson` map, since 0.6.0) and the binding kinds it does not know (they decode to nothing, so those parameters take their
+ignores `macros`, `beats` (a `BeatGridJson` map, since 0.6.0), `drums` (a `DrumHitsJson` map, since 0.8.0) and the binding kinds it does not know (they decode to nothing, so those parameters take their
 defaults) — the host sends everything, the plugin's package decides what it understands. On the host, `GeneratorPluginClient` does the handshake, rebuilds a baked animation with
 `FrameAssembler` (byte-identical to `bakeGenerator` in process) and returns the views of `applyEffect(effectId,
 request, inputs)` (identical to an in-process `EffectRunner`).

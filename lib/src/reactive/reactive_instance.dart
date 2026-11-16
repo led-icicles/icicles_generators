@@ -71,6 +71,9 @@ final class ReactiveEngine {
   double _lastGained = 0;
   int? _lastBeat;
   double _flash = 0;
+
+  /// Time since the last flash trigger (starts beyond the interval).
+  int _sinceFlashUs = 1 << 40;
   int _restarts = 0;
   int _warpedUs = 0;
 
@@ -96,11 +99,21 @@ final class ReactiveEngine {
     _lastOnset = audio.onset;
     final rangeFires = _lastGained < AudioReactivity.triggerLevel && gained >= AudioReactivity.triggerLevel;
     _lastGained = gained;
-    bool fires(ReactiveTrigger trigger) => switch (trigger) {
-          ReactiveTrigger.beat => beatFires,
-          ReactiveTrigger.onset => onsetFires,
-          ReactiveTrigger.range => rangeFires,
-        };
+    // A drum trigger's strength (`0` = no hit); 1 for the other triggers
+    // when they fire.
+    double strength(ReactiveTrigger trigger) {
+      if (trigger.isDrum && audio.hasDrums) {
+        final cls = trigger.drumClass;
+        return cls == null ? audio.anyDrumHit : audio.drumHit(cls);
+      }
+      final fired = switch (trigger) {
+        ReactiveTrigger.onset => onsetFires,
+        ReactiveTrigger.range => rangeFires,
+        // beat, and the drum triggers without drum hits.
+        _ => beatFires,
+      };
+      return fired ? 1 : 0;
+    }
 
     final seconds = dt.inMicroseconds / Duration.microsecondsPerSecond;
     final flashMode = r[ReactiveModeKind.flash];
@@ -109,12 +122,18 @@ final class ReactiveEngine {
     } else {
       final decay = flashMode.decay.inMicroseconds / Duration.microsecondsPerSecond;
       _flash = decay <= 0 ? 0 : _flash * math.exp(-seconds / decay);
-      if (fires(flashMode.trigger)) _flash = math.max(_flash, flashMode.max);
+      _sinceFlashUs += dt.inMicroseconds;
+      final hit = strength(flashMode.trigger);
+      // At most 3 flashes a second (AudioReactivity.minFlashInterval).
+      if (hit > 0 && _sinceFlashUs >= AudioReactivity.minFlashInterval.inMicroseconds) {
+        _flash = math.max(_flash, flashMode.max * hit);
+        _sinceFlashUs = 0;
+      }
       if (_flash < 1e-3) _flash = 0;
     }
 
     final restartMode = r[ReactiveModeKind.restart];
-    final restart = restartMode != null && fires(restartMode.trigger);
+    final restart = restartMode != null && strength(restartMode.trigger) > 0;
     if (restart) _restarts++;
 
     // The warped time of this frame is the integral of the rate over the
@@ -411,11 +430,16 @@ final class ReactivePostProcessor {
 
   /// The audio frame of grid frame [index] of [request] (the resolver's
   /// sampling: song time `audioOrigin + frameStart`, beat fields from the
-  /// beats, else the tempo).
+  /// beats, else the tempo, drum fields over the frame's span).
   static AudioFrame audioFrameAt(BakeRequest request, int index) {
-    final songTime = request.audioOrigin + request.setup.framerate.frameStart(index);
+    final framerate = request.setup.framerate;
+    final start = framerate.frameStart(index);
+    final songTime = request.audioOrigin + start;
     final audio = request.audio;
-    if (audio != null) return audio.sampleAt(songTime, tempo: request.tempo, beats: request.beats);
+    if (audio != null) {
+      final span = index == 0 ? framerate.frameDuration(0) : start - framerate.frameStart(index - 1);
+      return audio.sampleAt(songTime, tempo: request.tempo, beats: request.beats, drums: request.drums, span: span);
+    }
     if (request.tempo == null && request.beats == null) return AudioFrame.silent;
     return AudioFrame.fromColumns(_silent, tempo: request.tempo, beats: request.beats, time: songTime);
   }

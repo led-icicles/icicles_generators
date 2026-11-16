@@ -4,6 +4,7 @@ import '../generator/generator.dart';
 import '../generator/generator_exception.dart';
 import '../reactive/audio_reactivity.dart';
 import '../time/beat_grid.dart';
+import '../time/drum_hits.dart';
 import '../time/tempo.dart';
 import 'plugin_connection.dart';
 
@@ -24,13 +25,16 @@ const pluginProtocolVersion = 1;
 ///   (`ReactivePostProcessor`), so reactivity keeps working — only the speed,
 ///   restart and size modes need the plugin's cooperation).
 /// - host → plugin `bake {requestId, generatorId, version, setup, frameCount,
-///   name, bindings, macros, tempo, beats, audioOriginUs, audioHash}` (`macros`:
+///   name, bindings, macros, tempo, beats, drums, audioOriginUs, audioHash}` (`macros`:
 ///   the composition's macro bindings by id, since 0.5.0 — an older plugin
 ///   ignores the key and its `MacroBinding`s decode to nothing, so those
 ///   parameters take their defaults; `beats`: the real beat grid in the
 ///   `BeatGridJson` form, since 0.6.0, optional — an older plugin ignores it
 ///   and follows `tempo`; `reactivity`: the `AudioReactivityJson` form of an
-///   active `BakeRequest.reactivity`, since 0.7.0, optional), with the
+///   active `BakeRequest.reactivity`, since 0.7.0, optional; `drums`: the
+///   detected drum hits in the `DrumHitsJson` form, since 0.8.0, optional —
+///   an older plugin ignores it and its drum triggers follow the beat clock),
+///   with the
 ///   `AudioFeatures` bytes as payload the first time a hash is used on the
 ///   connection (the plugin caches them by `audioHash`).
 /// - plugin → host `frames {requestId, first, count}` with a payload of
@@ -43,7 +47,7 @@ const pluginProtocolVersion = 1;
 ///   payload: hands the plugin features for a later `apply` (no reply; the
 ///   plugin caches them by hash like a bake's).
 /// - host → plugin `apply {requestId, effectId, version, setup, frameCount,
-///   bindings, macros, tempo, beats, audioOriginUs, audioHash}` with the input frames as
+///   bindings, macros, tempo, beats, drums, audioOriginUs, audioHash}` with the input frames as
 ///   payload in the layout of `frames` (`u16 durationMs` + RGB per frame,
 ///   `frameCount` of them); answered like a bake with `frames` of the output
 ///   and `done`, or `error`.
@@ -128,6 +132,12 @@ abstract final class PluginProtocol {
 
   /// Decodes [beatsToJson]; `null` for a missing or malformed value.
   static BeatGrid? beatsFromJson(Object? json) => BeatGridJson.fromJson(json);
+
+  /// The `drums` header field: [DrumHitsJson.toJson].
+  static Map<String, Object?>? drumsToJson(DrumHits? drums) => DrumHitsJson.toJson(drums);
+
+  /// Decodes [drumsToJson]; `null` for a missing or malformed value.
+  static DrumHits? drumsFromJson(Object? json) => DrumHitsJson.fromJson(json);
 
   static GeneratorErrorKind errorKind(Object? name) =>
       GeneratorErrorKind.values.where((k) => k.name == name).firstOrNull ?? GeneratorErrorKind.pluginFailed;

@@ -8,6 +8,7 @@ import '../generator/generator_info.dart';
 import '../params/param_binding.dart';
 import '../reactive/audio_reactivity.dart';
 import '../time/beat_grid.dart';
+import '../time/drum_hits.dart';
 import '../time/frame_grid.dart';
 import '../time/tempo.dart';
 
@@ -41,6 +42,11 @@ final class BakeRequest extends Equatable {
   /// the beat fields and the beat-based bindings.
   final BeatGrid? beats;
 
+  /// The drum hits of the music on the same clock as [audio], `null`
+  /// without a drum detector's result. Read with [audio]: a bake that does
+  /// not use the analysed audio ignores them.
+  final DrumHits? drums;
+
   /// Time on the [audio]/[tempo] clock of generator time 0 (the song time
   /// at the clip's source start).
   final Duration audioOrigin;
@@ -66,6 +72,7 @@ final class BakeRequest extends Equatable {
     this.audio,
     this.tempo,
     this.beats,
+    this.drums,
     this.audioOrigin = Duration.zero,
     this.name,
     this.macros = const {},
@@ -80,6 +87,7 @@ final class BakeRequest extends Equatable {
     AudioFeatures? audio,
     Tempo? tempo,
     BeatGrid? beats,
+    DrumHits? drums,
     Duration audioOrigin = Duration.zero,
     String? name,
     Map<String, ParamBinding> macros = const {},
@@ -92,6 +100,7 @@ final class BakeRequest extends Equatable {
         audio: audio,
         tempo: tempo,
         beats: beats,
+        drums: drums,
         audioOrigin: audioOrigin,
         name: name,
         macros: macros,
@@ -123,6 +132,7 @@ final class BakeRequest extends Equatable {
         audio: audio,
         tempo: tempo,
         beats: beats,
+        drums: drums,
         audioOrigin: audioOrigin,
         name: name,
         macros: macros,
@@ -162,7 +172,7 @@ final class BakeRequest extends Equatable {
 
   @override
   List<Object?> get props =>
-      [setup, frameCount, bindings, audio?.contentHash, tempo, beats, audioOrigin, name, macros, reactivity];
+      [setup, frameCount, bindings, audio?.contentHash, tempo, beats, drums, audioOrigin, name, macros, reactivity];
 }
 
 /// Whether a generator with [info] baked with [bindings] (and [reactivity])

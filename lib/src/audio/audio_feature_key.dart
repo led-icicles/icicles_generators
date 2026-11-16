@@ -48,7 +48,17 @@ enum AudioFeatureKey {
   beatPhase,
 
   /// Position within the current 4-beat bar, `0..1`.
-  barPhase;
+  barPhase,
+
+  /// The strength of the last kick, decaying exponentially (80 ms) after it
+  /// (from the drum hits; 0 without them).
+  kickPulse,
+
+  /// Like [kickPulse] for the snare.
+  snarePulse,
+
+  /// Like [kickPulse] for the hi-hats.
+  hihatPulse;
 
   /// Number of keys stored as [AudioFeatures] columns.
   static const columnCount = 22;
@@ -59,11 +69,18 @@ enum AudioFeatureKey {
   /// Number of mel bands.
   static const bandCount = 16;
 
-  /// Whether the value comes from the analysed audio (not from the tempo).
+  /// Whether the value comes from the analysed audio features (not from
+  /// the tempo or the drum hits).
   bool get isColumn => index < columnCount;
 
   /// Whether the value comes from the tempo.
-  bool get isBeat => index >= columnCount;
+  bool get isBeat => this == beatPulse || this == beatPhase || this == barPhase;
+
+  /// Whether the value comes from the drum hits of the analysed audio.
+  bool get isDrum => this == kickPulse || this == snarePulse || this == hihatPulse;
+
+  /// Whether the value needs the analysed audio (features or drum hits).
+  bool get usesAnalysis => isColumn || isDrum;
 
   /// The key of mel band [band] (`0..15`).
   static AudioFeatureKey band(int band) {

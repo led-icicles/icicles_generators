@@ -4,6 +4,7 @@ import '../audio/audio_frame.dart';
 import '../generator/localized_text.dart';
 import '../params/param_spec.dart';
 import '../params/param_values.dart';
+import '../time/drum_hits.dart';
 
 /// A part of the spectrum an audio-driven generator follows, like LedFx's
 /// per-effect "frequency range": a preset band or a [custom] Hz pair.
@@ -141,7 +142,10 @@ enum AudioSource {
   level('level', LocalizedText('Loudness', pl: 'Głośność')),
   range('range', LocalizedText('Frequency range', pl: 'Zakres częstotliwości')),
   onset('onset', LocalizedText('Hits (onset)', pl: 'Uderzenia (onset)')),
-  beat('beat', LocalizedText('Beat pulse (needs a tempo)', pl: 'Puls tempa (wymaga tempa)'));
+  beat('beat', LocalizedText('Beat pulse (needs a tempo)', pl: 'Puls tempa (wymaga tempa)')),
+  kick('kick', LocalizedText('Kick hits', pl: 'Uderzenia stopy')),
+  snare('snare', LocalizedText('Snare hits', pl: 'Uderzenia werbla')),
+  hihat('hihat', LocalizedText('Hi-hat hits', pl: 'Uderzenia hi-hatu'));
 
   /// The option id stored in projects.
   final String id;
@@ -158,7 +162,8 @@ enum AudioSource {
 }
 
 /// The standard "follows" parameter (`source` by default): loudness, the
-/// frequency range of the [audioRangeParams], onsets or the beat pulse.
+/// frequency range of the [audioRangeParams], onsets, the beat pulse or the
+/// pulse of a detected drum.
 /// Read it with [audioSourceValue].
 ChoiceParam audioSourceParam({
   String id = 'source',
@@ -183,4 +188,8 @@ double audioSourceValue(ParamValues p, AudioFrame audio, {String id = 'source', 
       AudioSource.range => audioRangeValue(p, audio, prefix: rangePrefix),
       AudioSource.onset => audio.onset,
       AudioSource.beat => audio.beatPulse,
+      // The drum pulses; the beat pulse while the music has no detected drums.
+      AudioSource.kick => audio.hasDrums ? audio.drumPulse(DrumClass.kick) : audio.beatPulse,
+      AudioSource.snare => audio.hasDrums ? audio.drumPulse(DrumClass.snare) : audio.beatPulse,
+      AudioSource.hihat => audio.hasDrums ? audio.drumPulse(DrumClass.hihat) : audio.beatPulse,
     };

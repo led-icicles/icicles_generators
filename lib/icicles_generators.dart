@@ -39,6 +39,7 @@ export 'src/reactive/audio_reactivity.dart';
 export 'src/reactive/reactive_instance.dart';
 export 'src/reactive/reactive_target.dart';
 export 'src/time/beat_grid.dart';
+export 'src/time/drum_hits.dart';
 export 'src/time/frame_grid.dart';
 export 'src/time/tempo.dart';
 export 'src/util/audio_range.dart';

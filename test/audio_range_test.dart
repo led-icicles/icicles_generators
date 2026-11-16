@@ -119,11 +119,11 @@ void main() {
   group('audioSourceParam', () {
     final specs = [audioSourceParam(), ...audioRangeParams()];
 
-    test('offers level, range, onset and the beat pulse', () {
+    test('offers level, range, onset, the beat pulse and the drum pulses', () {
       final spec = specs[0] as ChoiceParam;
       expect(spec.id, 'source');
       expect(spec.defaultValue, 'range');
-      expect(spec.options.map((o) => o.id), ['level', 'range', 'onset', 'beat']);
+      expect(spec.options.map((o) => o.id), ['level', 'range', 'onset', 'beat', 'kick', 'snare', 'hihat']);
       for (final option in spec.options) {
         expect(option.label.pl, isNotNull);
       }

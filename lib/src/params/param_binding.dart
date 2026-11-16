@@ -4,6 +4,7 @@ import 'package:equatable/equatable.dart';
 import 'package:icicles_animation_dart/icicles_animation_dart.dart';
 
 import '../audio/audio_feature_key.dart';
+import '../time/drum_hits.dart';
 import 'easing.dart';
 
 export 'easing.dart';
@@ -71,7 +72,7 @@ final class AudioBinding extends ParamBinding {
   });
 
   @override
-  bool get usesAudioFeatures => feature.isColumn;
+  bool get usesAudioFeatures => feature.usesAnalysis;
 
   @override
   bool get usesTempo => feature.isBeat;
@@ -431,6 +432,10 @@ sealed class EnvelopeTrigger extends Equatable {
   const factory EnvelopeTrigger.rangeHit({required double lowHz, required double highHz, double threshold}) =
       RangeHitTrigger;
 
+  /// A detected drum hit of one class ([DrumHitTrigger.drum]; any class when
+  /// `null`); the beat clock stands in while the music has no drum hits.
+  const factory EnvelopeTrigger.drumHit({DrumClass? drum}) = DrumHitTrigger;
+
   bool get usesAudioFeatures => false;
 
   bool get usesTempo => false;
@@ -495,6 +500,23 @@ final class RangeHitTrigger extends EnvelopeTrigger {
 
   @override
   List<Object?> get props => [lowHz, highHz, threshold];
+}
+
+final class DrumHitTrigger extends EnvelopeTrigger {
+  /// The drum class; any class when `null`.
+  final DrumClass? drum;
+
+  const DrumHitTrigger({this.drum});
+
+  @override
+  bool get usesAudioFeatures => true;
+
+  /// The beat clock is the fallback without drum hits.
+  @override
+  bool get usesTempo => true;
+
+  @override
+  List<Object?> get props => [drum];
 }
 
 /// An envelope fired by [trigger]: the level rises from 0 to 1 over

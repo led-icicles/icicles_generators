@@ -2,15 +2,24 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import '../time/beat_grid.dart';
+import '../time/drum_hits.dart';
 import '../time/tempo.dart';
 import 'audio_feature_extractor.dart';
 import 'audio_feature_key.dart';
 
 /// The audio features at one instant, all in `0..1` except [beatIndex] and
 /// [bpm]; every value is 0 without a soundtrack (and the beat fields are 0
-/// without a beat clock — a [BeatGrid] or a [Tempo]).
+/// without a beat clock — a [BeatGrid] or a [Tempo], the drum fields without
+/// [DrumHits]).
 final class AudioFrame {
+  /// Time constant of [drumPulse]'s decay.
+  static const drumPulseDecay = Duration(milliseconds: 80);
+
   final Float32List _columns;
+
+  /// Per [DrumClass]: the strength of the hit in this frame's span (0 =
+  /// none), then the pulse; `null` without drum hits.
+  final Float32List? _drums;
 
   /// Position within the current beat, `0..1`.
   final double beatPhase;
@@ -29,7 +38,8 @@ final class AudioFrame {
   final double bpm;
 
   AudioFrame._(this._columns,
-      {this.beatPhase = 0, this.barPhase = 0, this.beatPulse = 0, this.beatIndex = 0, this.bpm = 0});
+      {this.beatPhase = 0, this.barPhase = 0, this.beatPulse = 0, this.beatIndex = 0, this.bpm = 0, Float32List? drums})
+      : _drums = drums;
 
   /// An all-zero frame.
   static final silent = AudioFrame._(Float32List(AudioFeatureKey.columnCount));
@@ -38,16 +48,24 @@ final class AudioFrame {
   /// with the beat fields at [time] of [beats] (the real beats and downbeats
   /// of the music) when given, else of the constant [tempo]; all zero
   /// without either.
+  ///
+  /// The drum fields come from [drums]: [drumHit] reports the strongest hit
+  /// of each class with onset in `(time − span, time]` — the frame's own
+  /// span, so on a frame grid every hit reaches exactly one frame — and
+  /// [drumPulse] decays from the last hit at or before [time].
   factory AudioFrame.fromColumns(
     List<double> columns, {
     Tempo? tempo,
     BeatGrid? beats,
     Duration time = Duration.zero,
+    DrumHits? drums,
+    Duration span = Duration.zero,
   }) {
     if (columns.length != AudioFeatureKey.columnCount) {
       throw ArgumentError.value(columns.length, 'columns', 'Must have ${AudioFeatureKey.columnCount} values.');
     }
     final data = Float32List.fromList(columns);
+    final drumFields = drums == null || drums.isEmpty ? null : _drumFields(drums, time, span);
     if (beats != null) {
       final position = beats.beatPositionAt(time);
       final beat = position.floor();
@@ -59,9 +77,10 @@ final class AudioFrame {
         beatPulse: math.exp(-6 * phase),
         beatIndex: beat,
         bpm: beats.bpm,
+        drums: drumFields,
       );
     }
-    if (tempo == null) return AudioFrame._(data);
+    if (tempo == null) return AudioFrame._(data, drums: drumFields);
     final position = tempo.beatPosition(time);
     final beat = position.floor();
     final phase = position - beat;
@@ -73,8 +92,45 @@ final class AudioFrame {
       beatPulse: math.exp(-6 * phase),
       beatIndex: beat,
       bpm: tempo.bpm,
+      drums: drumFields,
     );
   }
+
+  static Float32List _drumFields(DrumHits drums, Duration time, Duration span) {
+    const n = 5; // DrumClass.values.length
+    final out = Float32List(2 * n);
+    final decay = drumPulseDecay.inMicroseconds.toDouble();
+    for (final cls in DrumClass.values) {
+      out[cls.index] = drums.strongestIn(cls, time - span, time)?.strength ?? 0;
+      final last = drums.lastAtOrBefore(cls, time);
+      if (last != null) {
+        out[n + cls.index] = last.strength * math.exp(-(time - last.time).inMicroseconds / decay);
+      }
+    }
+    return out;
+  }
+
+  /// Whether the frame carries drum hits (the analysis found drums).
+  bool get hasDrums => _drums != null;
+
+  /// The strength (`0..1`) of the strongest hit of [cls] in this frame's
+  /// span, 0 without one (see [AudioFrame.fromColumns]).
+  double drumHit(DrumClass cls) => _drums?[cls.index] ?? 0;
+
+  /// The strongest hit of any class in this frame's span.
+  double get anyDrumHit {
+    final d = _drums;
+    if (d == null) return 0;
+    var best = 0.0;
+    for (var i = 0; i < DrumClass.values.length; i++) {
+      best = math.max(best, d[i]);
+    }
+    return best;
+  }
+
+  /// The strength of the last hit of [cls], decaying with [drumPulseDecay]
+  /// (0 before the first hit and without drum hits).
+  double drumPulse(DrumClass cls) => _drums?[DrumClass.values.length + cls.index] ?? 0;
 
   double get level => _columns[AudioFeatureKey.level.index];
   double get bass => _columns[AudioFeatureKey.bass.index];
@@ -143,6 +199,9 @@ final class AudioFrame {
         AudioFeatureKey.beatPulse => beatPulse,
         AudioFeatureKey.beatPhase => beatPhase,
         AudioFeatureKey.barPhase => barPhase,
+        AudioFeatureKey.kickPulse => drumPulse(DrumClass.kick),
+        AudioFeatureKey.snarePulse => drumPulse(DrumClass.snare),
+        AudioFeatureKey.hihatPulse => drumPulse(DrumClass.hihat),
         _ => _columns[key.index],
       };
 }

@@ -31,14 +31,27 @@ AudioFeatures syntheticFeatures({double seconds = 10}) {
   return AudioFeatures(data);
 }
 
-/// A bake request of [seconds] on [testSetup] with synthetic audio and a
-/// 120 BPM tempo.
+/// Synthetic drum hits of [seconds] at 120 BPM: a kick on every beat
+/// (strength alternating 1 / 0.4), a snare on beats 2 and 4, hi-hats on
+/// eighths.
+DrumHits syntheticDrums({double seconds = 10}) {
+  final beats = (seconds * 2).floor();
+  return DrumHits({
+    DrumClass.kick: [for (var b = 0; b < beats; b++) DrumHit(Duration(milliseconds: 500 * b), b.isEven ? 1 : 0.4)],
+    DrumClass.snare: [for (var b = 1; b < beats; b += 2) DrumHit(Duration(milliseconds: 500 * b), 0.8)],
+    DrumClass.hihat: [for (var e = 0; e < 2 * beats; e++) DrumHit(Duration(milliseconds: 250 * e + 5), 0.5)],
+  }, source: 'test');
+}
+
+/// A bake request of [seconds] on [testSetup] with synthetic audio, drum
+/// hits and a 120 BPM tempo.
 BakeRequest testRequest({Map<String, ParamBinding> bindings = const {}, double seconds = 2, int? seed}) =>
     BakeRequest.forLength(
       setup: seed == null ? testSetup : testSetup.copyWith(seed: seed),
       length: Duration(milliseconds: (seconds * 1000).round()),
       bindings: bindings,
       audio: syntheticFeatures(),
+      drums: syntheticDrums(),
       tempo: Tempo(bpm: 120),
       audioOrigin: const Duration(milliseconds: 500),
     );

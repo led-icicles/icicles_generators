@@ -4,6 +4,7 @@ import '../generator/generator.dart';
 import '../generator/generator_info.dart';
 import '../generator/localized_text.dart';
 import '../params/param_spec.dart';
+import '../time/drum_hits.dart';
 import '../util/audio_range.dart';
 import '../util/color.dart';
 import '../util/palette.dart';
@@ -220,11 +221,11 @@ final class StrobeGenerator implements Generator {
   @override
   GeneratorInfo get info => const GeneratorInfo(
         id: 'icicles.strobe',
-        version: 1,
+        version: 2,
         name: LocalizedText('Strobe', pl: 'Stroboskop'),
         description: LocalizedText(
-          'Flashes on the beat grid or on every hit of a frequency range, the bass or an onset.',
-          pl: 'Błyski w rytm siatki beatu albo na każde uderzenie zakresu częstotliwości, basu lub onset.',
+          'Flashes on the detected drum hits (kick, snare, hi-hat…), the beat grid, or a rising audio feature.',
+          pl: 'Błyski na wykryte uderzenia perkusji (stopa, werbel, hi-hat…), w rytm siatki beatu albo na rosnącą cechę audio.',
         ),
         category: GeneratorCategory.basic,
         usesAudio: true,
@@ -241,10 +242,17 @@ final class StrobeGenerator implements Generator {
           id: 'trigger',
           label: LocalizedText('Trigger', pl: 'Wyzwalacz'),
           description: LocalizedText(
-            'What fires a flash: the beat grid, or a rising audio feature crossing the threshold.',
-            pl: 'Co odpala błysk: siatka beatu albo cecha audio rosnąca ponad próg.',
+            'What fires a flash: a detected drum hit (the beat grid while the music has no detected drums), '
+            'the beat grid, or a rising audio feature crossing the threshold.',
+            pl: 'Co odpala błysk: wykryte uderzenie perkusji (siatka beatu, gdy w muzyce nie wykryto perkusji), '
+                'siatka beatu albo cecha audio rosnąca ponad próg.',
           ),
           options: [
+            ChoiceOption('kick', LocalizedText('Kick', pl: 'Stopa')),
+            ChoiceOption('snare', LocalizedText('Snare / clap', pl: 'Werbel / klask')),
+            ChoiceOption('hihat', LocalizedText('Hi-hat', pl: 'Hi-hat')),
+            ChoiceOption('cymbals', LocalizedText('Cymbals', pl: 'Talerze')),
+            ChoiceOption('drums', LocalizedText('Any drum', pl: 'Dowolna perkusja')),
             ChoiceOption('beat', LocalizedText('Beat grid', pl: 'Siatka beatu')),
             ChoiceOption('range', LocalizedText('Frequency range hit', pl: 'Uderzenie zakresu częstotliwości')),
             ChoiceOption('bass', LocalizedText('Bass hit', pl: 'Uderzenie basu')),
@@ -253,7 +261,7 @@ final class StrobeGenerator implements Generator {
             ChoiceOption('treble', LocalizedText('Treble hit', pl: 'Uderzenie góry')),
             ChoiceOption('level', LocalizedText('Level', pl: 'Głośność')),
           ],
-          defaultValue: 'beat',
+          defaultValue: 'kick',
         ),
         ..._rangeParams,
         const NumberParam(
@@ -272,8 +280,8 @@ final class StrobeGenerator implements Generator {
           id: 'flashMs',
           label: LocalizedText('Flash (ms)', pl: 'Błysk (ms)'),
           description: LocalizedText(
-            'Audio triggers only: how long a triggered flash stays on.',
-            pl: 'Tylko wyzwalacze audio: jak długo świeci wyzwolony błysk.',
+            'Drum and audio triggers: how long a triggered flash stays on.',
+            pl: 'Wyzwalacze perkusji i audio: jak długo świeci wyzwolony błysk.',
           ),
           min: 20,
           max: 500,
@@ -282,9 +290,45 @@ final class StrobeGenerator implements Generator {
           unit: 'ms',
         ),
         const NumberParam(
+          id: 'accent',
+          label: LocalizedText('Accent', pl: 'Akcent'),
+          description: LocalizedText(
+            'Drum triggers: how much weaker hits flash dimmer (0 = every flash at full brightness).',
+            pl: 'Wyzwalacze perkusji: na ile słabsze uderzenia błyskają ciemniej (0 = każdy błysk pełną jasnością).',
+          ),
+          min: 0,
+          max: 1,
+          defaultValue: 0.5,
+          step: 0.01,
+        ),
+        const NumberParam(
+          id: 'minGapMs',
+          label: LocalizedText('Min. gap', pl: 'Min. odstęp'),
+          description: LocalizedText(
+            'Drum and audio triggers: the shortest time between two flashes. The default 335 ms keeps to '
+            'at most 3 flashes a second (the photosensitive epilepsy guidelines: WCAG, Ofcom) and still '
+            'flashes every kick up to 179 BPM; lower it only for audiences that know about the risk — '
+            'faster flashing can trigger seizures in people with photosensitive epilepsy.',
+            pl: 'Wyzwalacze perkusji i audio: najkrótszy czas między dwoma błyskami. Domyślne 335 ms to '
+                'najwyżej 3 błyski na sekundę (wytyczne dot. padaczki fotogennej: WCAG, Ofcom), a przy tym '
+                'błysk na każdą stopę do 179 BPM; zmniejszaj tylko dla świadomej widowni — szybsze miganie '
+                'może wywołać napad u osób z padaczką fotogenną.',
+          ),
+          min: 20,
+          max: 1000,
+          defaultValue: 335,
+          step: 5,
+          unit: 'ms',
+        ),
+        const NumberParam(
           id: 'rate',
           label: LocalizedText('Every', pl: 'Co'),
-          description: LocalizedText('Beats between flashes.', pl: 'Liczba uderzeń między błyskami.'),
+          description: LocalizedText(
+            'Beat grid trigger: beats between flashes. Below 0.5 beat the strobe exceeds 3 flashes a second '
+            'at common tempos (a photosensitive epilepsy risk).',
+            pl: 'Wyzwalacz siatki beatu: liczba uderzeń między błyskami. Poniżej 0,5 uderzenia stroboskop '
+                'przy typowych tempach przekracza 3 błyski na sekundę (ryzyko dla osób z padaczką fotogenną).',
+          ),
           min: 0.25,
           max: 4,
           defaultValue: 1,
@@ -309,24 +353,50 @@ final class StrobeGenerator implements Generator {
 }
 
 final class _StrobeInstance implements GeneratorInstance {
-  /// Audio triggers: the flash currently on ends at this time (exclusive).
+  /// Drum and audio triggers: the flash currently on ends at this time
+  /// (exclusive).
   Duration _flashUntil = Duration.zero;
 
   /// Audio triggers: a hit was already fired and the feature has not yet
   /// dropped below half the threshold (hysteresis, so one hit = one flash).
   bool _armed = true;
 
-  /// Minimum time between two triggered flashes, like a drum's re-trigger gap.
-  static const refractory = Duration(milliseconds: 60);
   Duration _lastHit = const Duration(days: -1);
+
+  /// Strength of the current drum flash (1 for the other triggers).
+  double _level = 1;
+
+  static const _drumTriggers = {
+    'kick': DrumClass.kick,
+    'snare': DrumClass.snare,
+    'hihat': DrumClass.hihat,
+    'cymbals': DrumClass.cymbals,
+    'toms': DrumClass.toms,
+    'drums': null,
+  };
 
   @override
   void render(FrameContext ctx, Icicles out) {
     final p = ctx.params;
     final audio = ctx.audio;
-    final trigger = p.choice('trigger');
+    var trigger = p.choice('trigger');
+    // Without detected drums the drum triggers follow the beat grid.
+    if (_drumTriggers.containsKey(trigger) && !audio.hasDrums) trigger = 'beat';
+    final minGap = Duration(milliseconds: p.number('minGapMs').round());
+    var level = 1.0;
     final bool on;
-    if (trigger == 'beat') {
+    if (_drumTriggers.containsKey(trigger)) {
+      final cls = _drumTriggers[trigger];
+      final hit = cls == null ? audio.anyDrumHit : audio.drumHit(cls);
+      if (hit > 0 && ctx.time - _lastHit >= minGap) {
+        _lastHit = ctx.time;
+        _level = hit;
+        _flashUntil = ctx.time + Duration(milliseconds: p.number('flashMs').round());
+      }
+      on = ctx.time < _flashUntil;
+      final accent = p.number('accent');
+      level = 1 - accent + accent * _level;
+    } else if (trigger == 'beat') {
       final beats = audio.bpm > 0 ? audio.beatIndex + audio.beatPhase : ctx.seconds * StrobeGenerator.fallbackBpm / 60;
       final position = beats / p.number('rate');
       final phase = position - position.floor();
@@ -342,14 +412,14 @@ final class _StrobeInstance implements GeneratorInstance {
       };
       final threshold = p.number('threshold');
       if (!_armed && value < threshold / 2) _armed = true;
-      if (_armed && value >= threshold && ctx.time - _lastHit >= refractory) {
+      if (_armed && value >= threshold && ctx.time - _lastHit >= minGap) {
         _armed = false;
         _lastHit = ctx.time;
         _flashUntil = ctx.time + Duration(milliseconds: p.number('flashMs').round());
       }
       on = ctx.time < _flashUntil;
     }
-    final color = on ? dim(p.color('color'), p.number('brightness')) : black;
+    final color = on ? dim(p.color('color'), p.number('brightness') * level) : black;
     out.setAllPixelsColor(color);
     if (panelModeOf(p) == PanelMode.off) {
       applyPanelMode(out, PanelMode.off);

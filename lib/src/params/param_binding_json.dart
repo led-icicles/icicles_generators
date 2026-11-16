@@ -1,6 +1,7 @@
 import 'package:icicles_animation_dart/icicles_animation_dart.dart';
 
 import '../audio/audio_feature_key.dart';
+import '../time/drum_hits.dart';
 import '../util/color.dart';
 import '../util/palette.dart';
 import 'param_binding.dart';
@@ -26,6 +27,7 @@ import 'param_binding.dart';
 /// {"type": "envelope", "trigger": "onset", "threshold": 0.5,        // or "beat" / "bar" /
 ///  "attackMs": 10, "decayMs": 100, "sustainMs": 0, "releaseMs": 300,  // "rangeHit" + "lowHz", "highHz", "threshold"
 ///  "sustainLevel": 0.5, "min": 0.0, "max": 1.0, "retrigger": true}
+///                                    // "drumHit" with an optional "drum": "kick" | "snare" | …
 /// {"type": "stack", "base": {…}, "modulators": [{"source": {…}, "depth": 0.5, "mode": "add", "depthBinding": {…}}]}
 /// {"type": "macro", "macro": "intensity"}
 /// ```
@@ -98,6 +100,7 @@ abstract final class ParamBindingJson {
               BeatTrigger() => {'trigger': 'beat'},
               BarTrigger() => {'trigger': 'bar'},
               OnsetTrigger(:final threshold) => {'trigger': 'onset', 'threshold': _number(threshold)},
+              DrumHitTrigger(:final drum) => {'trigger': 'drumHit', if (drum != null) 'drum': drum.name},
               RangeHitTrigger(:final lowHz, :final highHz, :final threshold) => {
                   'trigger': 'rangeHit',
                   'lowHz': _number(lowHz),
@@ -284,6 +287,7 @@ abstract final class ParamBindingJson {
           'beat' => EnvelopeTrigger.beat,
           'bar' => EnvelopeTrigger.bar,
           'onset' => OnsetTrigger(threshold: _double(json['threshold']) ?? 0.5),
+          'drumHit' => DrumHitTrigger(drum: DrumClass.fromName(json['drum'] is String ? json['drum'] as String : null)),
           'rangeHit' => RangeHitTrigger(
               lowHz: _double(json['lowHz']) ?? RangeHitTrigger.minHz,
               highHz: _double(json['highHz']) ?? RangeHitTrigger.maxHz,

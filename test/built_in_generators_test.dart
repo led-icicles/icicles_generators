@@ -22,9 +22,11 @@ ParamBinding alternative(ParamSpec spec) => switch (spec) {
 /// Parameters that only matter with another parameter set first: the base
 /// bake and the changed bake both get [companions] applied.
 const companions = <String, Map<String, Map<String, ParamBinding>>>{
-  // Threshold and flash length are read only by the audio triggers; the
-  // range only by the range trigger.
+  // Threshold is read only by the audio triggers, the range only by the
+  // range trigger, rate and flash length (duty) only by the beat grid.
   'icicles.strobe': {
+    'rate': {'trigger': ConstantBinding('beat')},
+    'duty': {'trigger': ConstantBinding('beat')},
     'threshold': {'trigger': ConstantBinding('bass')},
     'flashMs': {'trigger': ConstantBinding('bass')},
     'range': {'trigger': ConstantBinding('range')},
@@ -48,6 +50,12 @@ Map<String, ParamBinding> companionsOf(Generator generator, ParamSpec spec) {
   }
   return const {};
 }
+
+/// Generators allowed more than 11 parameters.
+const maxParams = <String, int>{
+  // Drum triggers (accent, minimum gap) on top of the beat and audio ones.
+  'icicles.strobe': 13,
+};
 
 const overrides = <String, Map<String, ParamBinding>>{
   // A constant trigger rises only at frame 0, where the interval timer fires
@@ -113,7 +121,7 @@ void main() {
     group(generator.info.id, () {
       test('has a valid schema with en + pl texts', () {
         final params = generator.params;
-        expect(params.length, inInclusiveRange(3, 11));
+        expect(params.length, inInclusiveRange(3, maxParams[generator.info.id] ?? 11));
         expect(params.map((p) => p.id).toSet(), hasLength(params.length));
         expect(generator.info.name.pl, isNotNull);
         expect(generator.info.description.pl, isNotNull);
