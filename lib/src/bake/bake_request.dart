@@ -131,11 +131,13 @@ final class BakeRequest extends Equatable {
 
   /// [audio] as the program reads it: levelled per window
   /// ([adaptiveAudioLevels]) when the reactivity asks for
-  /// [AudioLevelMode.adaptive], else as analysed.
+  /// [AudioLevelMode.adaptive] / [AudioLevelMode.adaptiveBands], else as
+  /// analysed.
   AudioFeatures? get levelledAudio {
     final features = audio;
-    if (features == null || reactivity.level != AudioLevelMode.adaptive) return features;
-    return adaptiveAudioLevels(features, reactivity.levelWindow);
+    if (features == null || !reactivity.level.isAdaptive) return features;
+    return adaptiveAudioLevels(features, reactivity.levelWindow,
+        perBand: reactivity.level == AudioLevelMode.adaptiveBands);
   }
 
   /// Whether the bindings (or a macro one of them reads) read the analysed

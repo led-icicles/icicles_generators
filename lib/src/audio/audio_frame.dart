@@ -112,7 +112,7 @@ final class AudioFrame {
     final position = tempo.beatPosition(time);
     final beat = position.floor();
     final phase = position - beat;
-    final barPosition = position / 4;
+    final barPosition = position / tempo.beatsPerBar;
     return AudioFrame._(
       data,
       beatPhase: phase,

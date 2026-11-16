@@ -247,11 +247,11 @@ final class ParamResolver {
   double _gridBeats(Duration songTime, Duration start) => _gridPosition(songTime) ?? _seconds(start) * fallbackBpm / 60;
 
   /// Bars on the song's beat clock at [songTime] (between the real
-  /// downbeats, else every 4 beats of the tempo), or at [fallbackBpm] on
+  /// downbeats, else every `Tempo.beatsPerBar` beats of the tempo), or at [fallbackBpm] on
   /// clip time without one — what the per-bar random, step and bar-trigger
   /// bindings count bars with.
   double _gridBars(Duration songTime, Duration start) =>
-      beats?.barPositionAt(songTime) ?? _gridBeats(songTime, start) / 4;
+      beats?.barPositionAt(songTime) ?? _gridBeats(songTime, start) / (tempo?.beatsPerBar ?? Tempo.defaultBeatsPerBar);
 
   /// Clip-local beats at [start]: seconds × bpm / 60.
   double _clipBeats(Duration start) => _seconds(start) * _clockBpm / 60;

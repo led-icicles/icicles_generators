@@ -1,3 +1,14 @@
+## 0.11.0
+
+- Meter: `Tempo.beatsPerBar` (1–16, default 4; `barPosition`, `copyWith`, equality). The tempo path counts bars
+  with it (`AudioFrame.barPhase`, the resolver's per-bar bindings) instead of a fixed 4. The plugin `tempo`
+  header carries `beatsPerBar`, omitted at 4 (older plugins keep reading 4/4).
+- `MusicalBinding.bars(bars, {beatsPerBar})` converts with the song's meter.
+- `AudioLevelMode.adaptiveBands`: the adaptive level with every mel band levelled on its own (a spectrum whose
+  bass stays loud no longer fills up); `AudioLevelMode.isAdaptive`; `adaptiveAudioLevels(…, perBand:)`.
+- The plugin `reactivity` header is also sent for an inactive reactivity with an adaptive level, so a plugin
+  levels its input like a built-in.
+
 ## 0.10.0
 
 - Deep analysis features (`lib/src/audio/deep_audio_features.dart`, moved here from the app): `StemKind`,

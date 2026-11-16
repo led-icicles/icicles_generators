@@ -152,7 +152,7 @@ class BeatGrid extends Equatable {
   /// bar's length (in beats) continues before the first downbeat and the
   /// last bar's after the last one. Without downbeats, bars are
   /// [defaultBeatsPerBar] beats from the first beat. The counterpart of
-  /// `Tempo.beatPosition(t) / 4`.
+  /// `Tempo.barPosition(t)`.
   double barPositionAt(Duration time) {
     final position = beatPositionAt(time);
     final starts = _downbeatPositions;

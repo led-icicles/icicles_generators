@@ -46,12 +46,14 @@ final class ConstantBinding extends ParamBinding {
 }
 
 /// A time-valued number given in music: [beats] beats of the beat clock (a
-/// bar is [beatsPerBar] beats). Fits only number parameters with a
+/// bar is [beatsPerBar] beats unless the caller converts with the song's
+/// meter). Fits only number parameters with a
 /// `NumberParam.timeKind`; the resolver turns it into the parameter's unit —
 /// seconds, milliseconds, or a rate per second (`1 / duration`) — at the
 /// clock's tempo ([fallbackBpm] without one), so the value follows tempo
 /// changes.
 final class MusicalBinding extends ParamBinding {
+  /// The default meter for [MusicalBinding.bars].
   static const beatsPerBar = 4;
 
   /// Shortest and longest length.
@@ -62,8 +64,8 @@ final class MusicalBinding extends ParamBinding {
 
   const MusicalBinding(this.beats);
 
-  /// [bars] bars.
-  const MusicalBinding.bars(double bars) : beats = bars * beatsPerBar;
+  /// [bars] bars of [beatsPerBar] beats (the song's meter).
+  const MusicalBinding.bars(double bars, {int beatsPerBar = MusicalBinding.beatsPerBar}) : beats = bars * beatsPerBar;
 
   @override
   bool get usesTempo => true;

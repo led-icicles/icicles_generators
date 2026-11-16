@@ -13,12 +13,25 @@ class Tempo extends Equatable {
   final double bpm;
 
   /// Timeline time of one beat; the grid extends from it in both
-  /// directions.
+  /// directions. It is also a downbeat: bars start every [beatsPerBar]
+  /// beats from it.
   final Duration firstBeatOffset;
 
-  Tempo({required this.bpm, this.firstBeatOffset = Duration.zero}) {
+  /// The meter: beats in one bar (4 = 4/4, 3 = 3/4…).
+  final int beatsPerBar;
+
+  /// The default [beatsPerBar].
+  static const defaultBeatsPerBar = 4;
+
+  /// Highest allowed [beatsPerBar].
+  static const maxBeatsPerBar = 16;
+
+  Tempo({required this.bpm, this.firstBeatOffset = Duration.zero, this.beatsPerBar = defaultBeatsPerBar}) {
     if (!bpm.isFinite || bpm < minBpm || bpm > maxBpm) {
       throw ArgumentError.value(bpm, 'bpm', 'Must be in [$minBpm, $maxBpm].');
+    }
+    if (beatsPerBar < 1 || beatsPerBar > maxBeatsPerBar) {
+      throw ArgumentError.value(beatsPerBar, 'beatsPerBar', 'Must be in [1, $maxBeatsPerBar].');
     }
   }
 
@@ -29,6 +42,9 @@ class Tempo extends Equatable {
   /// negative before it.
   double beatPosition(Duration time) =>
       (time.inMicroseconds - firstBeatOffset.inMicroseconds) / beatIntervalMicroseconds;
+
+  /// Bars elapsed at [time] since [firstBeatOffset] (fractional).
+  double barPosition(Duration time) => beatPosition(time) / beatsPerBar;
 
   /// The beat nearest to [time], never before the timeline start.
   Duration nearestBeat(Duration time) {
@@ -56,9 +72,12 @@ class Tempo extends Equatable {
     }
   }
 
-  Tempo copyWith({double? bpm, Duration? firstBeatOffset}) =>
-      Tempo(bpm: bpm ?? this.bpm, firstBeatOffset: firstBeatOffset ?? this.firstBeatOffset);
+  Tempo copyWith({double? bpm, Duration? firstBeatOffset, int? beatsPerBar}) => Tempo(
+        bpm: bpm ?? this.bpm,
+        firstBeatOffset: firstBeatOffset ?? this.firstBeatOffset,
+        beatsPerBar: beatsPerBar ?? this.beatsPerBar,
+      );
 
   @override
-  List<Object?> get props => [bpm, firstBeatOffset];
+  List<Object?> get props => [bpm, firstBeatOffset, beatsPerBar];
 }

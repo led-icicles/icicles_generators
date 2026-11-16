@@ -78,9 +78,11 @@ abstract final class PluginProtocol {
   /// The capabilities a plugin built with this version of the package has.
   static const List<String> capabilities = [capabilityReactivity];
 
-  /// The `reactivity` header field: `null` for an inactive reactivity.
+  /// The `reactivity` header field: `null` for an inactive reactivity that
+  /// levels the audio as analysed (an adaptive level applies even with the
+  /// reactivity off, so it is sent then too).
   static Map<String, Object?>? reactivityToJson(AudioReactivity reactivity) =>
-      reactivity.isActive ? AudioReactivityJson.toJson(reactivity) : null;
+      reactivity.isActive || reactivity.level.isAdaptive ? AudioReactivityJson.toJson(reactivity) : null;
 
   /// Decodes [reactivityToJson]; [AudioReactivity.none] for a missing or
   /// malformed value.
@@ -123,13 +125,24 @@ abstract final class PluginProtocol {
     throw const GeneratorException(GeneratorErrorKind.protocolError, 'Malformed setup.');
   }
 
-  static Map<String, Object?>? tempoToJson(Tempo? tempo) =>
-      tempo == null ? null : {'bpm': tempo.bpm, 'firstBeatOffsetUs': tempo.firstBeatOffset.inMicroseconds};
+  /// `beatsPerBar` is omitted at the default 4 (older plugins read 4/4).
+  static Map<String, Object?>? tempoToJson(Tempo? tempo) => tempo == null
+      ? null
+      : {
+          'bpm': tempo.bpm,
+          'firstBeatOffsetUs': tempo.firstBeatOffset.inMicroseconds,
+          if (tempo.beatsPerBar != Tempo.defaultBeatsPerBar) 'beatsPerBar': tempo.beatsPerBar,
+        };
 
   static Tempo? tempoFromJson(Object? json) {
     if (json case {'bpm': final num bpm, 'firstBeatOffsetUs': final int offset}) {
       try {
-        return Tempo(bpm: bpm.toDouble(), firstBeatOffset: Duration(microseconds: offset));
+        final meter = json['beatsPerBar'];
+        return Tempo(
+          bpm: bpm.toDouble(),
+          firstBeatOffset: Duration(microseconds: offset),
+          beatsPerBar: meter is int ? meter : Tempo.defaultBeatsPerBar,
+        );
       } on ArgumentError {
         return null;
       }

@@ -14,6 +14,14 @@ enum AudioLevelMode {
   /// that stays loud (a bass line that never lets go) still moves through
   /// `0..1`, like an automatic gain with gentle compression.
   adaptive,
+
+  /// [adaptive] with every mel band levelled on its own: a spectrum whose
+  /// bass bands stay loud no longer fills up on the left (the shape of the
+  /// spectrum is traded for movement in every band).
+  adaptiveBands;
+
+  /// Whether the input is levelled per moving window.
+  bool get isAdaptive => this != song;
 }
 
 /// The default window of [AudioLevelMode.adaptive].
@@ -45,15 +53,16 @@ final _cache = Expando<Map<int, AudioFeatures>>('adaptiveAudioLevels');
 /// percentile maps to 0 and its 95th to 1 (at least [_minSpan] wide), then
 /// gently compressed. The window is centred — bakes are offline, so it may
 /// look ahead. The 16 mel bands share one range (the spectrum keeps its
-/// shape); the loudest frequency is a position, not a level, and stays as
-/// analysed. Pure and cached per instance and window.
-AudioFeatures adaptiveAudioLevels(AudioFeatures features, Duration window) {
+/// shape) unless [perBand]; the loudest frequency is a position, not a
+/// level, and stays as analysed. Pure and cached per instance, window and
+/// [perBand].
+AudioFeatures adaptiveAudioLevels(AudioFeatures features, Duration window, {bool perBand = false}) {
   final w = clampLevelWindow(window);
   final perWindow = _cache[features] ??= {};
-  return perWindow[w.inMicroseconds] ??= _level(features, w);
+  return perWindow[w.inMicroseconds * 2 + (perBand ? 1 : 0)] ??= _level(features, w, perBand);
 }
 
-AudioFeatures _level(AudioFeatures features, Duration window) {
+AudioFeatures _level(AudioFeatures features, Duration window, bool perBand) {
   const columns = AudioFeatureKey.columnCount;
   final rows = features.frameCount;
   final out = Float32List(rows * columns);
@@ -78,7 +87,8 @@ AudioFeatures _level(AudioFeatures features, Duration window) {
       }
       continue;
     }
-    final ranges = c >= AudioFeatureKey.firstBand ? bandRanges : _ranges([column], rows, blocks, half, stride);
+    final ranges =
+        c >= AudioFeatureKey.firstBand && !perBand ? bandRanges : _ranges([column], rows, blocks, half, stride);
     _apply(out, column, c, rows, ranges);
   }
   return AudioFeatures(out, hopDuration: features.hopDuration);
