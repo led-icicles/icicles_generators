@@ -224,8 +224,10 @@ final class StrobeGenerator implements Generator {
         version: 2,
         name: LocalizedText('Strobe', pl: 'Stroboskop'),
         description: LocalizedText(
-          'Flashes on the detected drum hits (kick, snare, hi-hat…), the beat grid, or a rising audio feature.',
-          pl: 'Błyski na wykryte uderzenia perkusji (stopa, werbel, hi-hat…), w rytm siatki beatu albo na rosnącą cechę audio.',
+          'Flashes on the detected drum hits (kick, snare, hi-hat…), on your own cues, the beat grid, or a rising '
+          'audio feature.',
+          pl: 'Błyski na wykryte uderzenia perkusji (stopa, werbel, hi-hat…), na Twoje znaczniki, w rytm siatki beatu '
+              'albo na rosnącą cechę audio.',
         ),
         category: GeneratorCategory.basic,
         usesAudio: true,
@@ -243,9 +245,10 @@ final class StrobeGenerator implements Generator {
           label: LocalizedText('Trigger', pl: 'Wyzwalacz'),
           description: LocalizedText(
             'What fires a flash: a detected drum hit (the beat grid while the music has no detected drums), '
-            'the beat grid, or a rising audio feature crossing the threshold.',
+            'a cue you placed on the clip\'s cue track, the beat grid, or a rising audio feature crossing the '
+            'threshold.',
             pl: 'Co odpala błysk: wykryte uderzenie perkusji (siatka beatu, gdy w muzyce nie wykryto perkusji), '
-                'siatka beatu albo cecha audio rosnąca ponad próg.',
+                'znacznik postawiony na ścieżce znaczników klipu, siatka beatu albo cecha audio rosnąca ponad próg.',
           ),
           options: [
             ChoiceOption('kick', LocalizedText('Kick', pl: 'Stopa')),
@@ -253,6 +256,7 @@ final class StrobeGenerator implements Generator {
             ChoiceOption('hihat', LocalizedText('Hi-hat', pl: 'Hi-hat')),
             ChoiceOption('cymbals', LocalizedText('Cymbals', pl: 'Talerze')),
             ChoiceOption('drums', LocalizedText('Any drum', pl: 'Dowolna perkusja')),
+            ChoiceOption('cues', LocalizedText('Cues (manual)', pl: 'Znaczniki (ręcznie)'), usesCues: true),
             ChoiceOption('beat', LocalizedText('Beat grid', pl: 'Siatka beatu')),
             ChoiceOption('range', LocalizedText('Frequency range hit', pl: 'Uderzenie zakresu częstotliwości')),
             ChoiceOption('bass', LocalizedText('Bass hit', pl: 'Uderzenie basu')),
@@ -280,8 +284,8 @@ final class StrobeGenerator implements Generator {
           id: 'flashMs',
           label: LocalizedText('Flash (ms)', pl: 'Błysk (ms)'),
           description: LocalizedText(
-            'Drum and audio triggers: how long a triggered flash stays on.',
-            pl: 'Wyzwalacze perkusji i audio: jak długo świeci wyzwolony błysk.',
+            'Drum, cue and audio triggers: how long a triggered flash stays on.',
+            pl: 'Wyzwalacze perkusji, znaczników i audio: jak długo świeci wyzwolony błysk.',
           ),
           min: 20,
           max: 500,
@@ -293,8 +297,8 @@ final class StrobeGenerator implements Generator {
           id: 'accent',
           label: LocalizedText('Accent', pl: 'Akcent'),
           description: LocalizedText(
-            'Drum triggers: how much weaker hits flash dimmer (0 = every flash at full brightness).',
-            pl: 'Wyzwalacze perkusji: na ile słabsze uderzenia błyskają ciemniej (0 = każdy błysk pełną jasnością).',
+            'Drum and cue triggers: how much weaker hits flash dimmer (0 = every flash at full brightness).',
+            pl: 'Wyzwalacze perkusji i znaczników: na ile słabsze uderzenia błyskają ciemniej (0 = każdy błysk pełną jasnością).',
           ),
           min: 0,
           max: 1,
@@ -305,11 +309,11 @@ final class StrobeGenerator implements Generator {
           id: 'minGapMs',
           label: LocalizedText('Min. gap', pl: 'Min. odstęp'),
           description: LocalizedText(
-            'Drum and audio triggers: the shortest time between two flashes. The default 335 ms keeps to '
+            'Drum, cue and audio triggers: the shortest time between two flashes. The default 335 ms keeps to '
             'at most 3 flashes a second (the photosensitive epilepsy guidelines: WCAG, Ofcom) and still '
             'flashes every kick up to 179 BPM; lower it only for audiences that know about the risk — '
             'faster flashing can trigger seizures in people with photosensitive epilepsy.',
-            pl: 'Wyzwalacze perkusji i audio: najkrótszy czas między dwoma błyskami. Domyślne 335 ms to '
+            pl: 'Wyzwalacze perkusji, znaczników i audio: najkrótszy czas między dwoma błyskami. Domyślne 335 ms to '
                 'najwyżej 3 błyski na sekundę (wytyczne dot. padaczki fotogennej: WCAG, Ofcom), a przy tym '
                 'błysk na każdą stopę do 179 BPM; zmniejszaj tylko dla świadomej widowni — szybsze miganie '
                 'może wywołać napad u osób z padaczką fotogenną.',
@@ -385,9 +389,13 @@ final class _StrobeInstance implements GeneratorInstance {
     final minGap = Duration(milliseconds: p.number('minGapMs').round());
     var level = 1.0;
     final bool on;
-    if (_drumTriggers.containsKey(trigger)) {
+    if (trigger == 'cues' || _drumTriggers.containsKey(trigger)) {
       final cls = _drumTriggers[trigger];
-      final hit = cls == null ? audio.anyDrumHit : audio.drumHit(cls);
+      final hit = trigger == 'cues'
+          ? audio.cueHit
+          : cls == null
+              ? audio.anyDrumHit
+              : audio.drumHit(cls);
       if (hit > 0 && ctx.time - _lastHit >= minGap) {
         _lastHit = ctx.time;
         _level = hit;

@@ -4,6 +4,7 @@ import '../generator/generator.dart';
 import '../generator/generator_exception.dart';
 import '../reactive/audio_reactivity.dart';
 import '../time/beat_grid.dart';
+import '../time/cue_hits.dart';
 import '../time/drum_hits.dart';
 import '../time/tempo.dart';
 import 'plugin_connection.dart';
@@ -33,8 +34,9 @@ const pluginProtocolVersion = 1;
 ///   and follows `tempo`; `reactivity`: the `AudioReactivityJson` form of an
 ///   active `BakeRequest.reactivity`, since 0.7.0, optional; `drums`: the
 ///   detected drum hits in the `DrumHitsJson` form, since 0.8.0, optional —
-///   an older plugin ignores it and its drum triggers follow the beat clock),
-///   with the
+///   an older plugin ignores it and its drum triggers follow the beat clock;
+///   `cues`: the clip's cues in the `CueHitsJson` form, since 0.9.0,
+///   optional — an older plugin ignores it), with the
 ///   `AudioFeatures` bytes as payload the first time a hash is used on the
 ///   connection (the plugin caches them by `audioHash`).
 /// - plugin → host `frames {requestId, first, count}` with a payload of
@@ -138,6 +140,12 @@ abstract final class PluginProtocol {
 
   /// Decodes [drumsToJson]; `null` for a missing or malformed value.
   static DrumHits? drumsFromJson(Object? json) => DrumHitsJson.fromJson(json);
+
+  /// The `cues` header field: [CueHitsJson.toJson].
+  static Map<String, Object?>? cuesToJson(CueHits? cues) => CueHitsJson.toJson(cues);
+
+  /// Decodes [cuesToJson]; `null` for a missing or malformed value.
+  static CueHits? cuesFromJson(Object? json) => CueHitsJson.fromJson(json);
 
   static GeneratorErrorKind errorKind(Object? name) =>
       GeneratorErrorKind.values.where((k) => k.name == name).firstOrNull ?? GeneratorErrorKind.pluginFailed;

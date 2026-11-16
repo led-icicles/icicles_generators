@@ -25,6 +25,9 @@ sealed class ParamBinding extends Equatable {
 
   /// Whether the binding reads the tempo (beat clock).
   bool get usesTempo => false;
+
+  /// Whether the binding reads the clip's cues (`BakeRequest.cues`).
+  bool get usesCues => false;
 }
 
 /// A fixed value: a `double` (number), an `int` (integer), a `bool`, a
@@ -73,6 +76,9 @@ final class AudioBinding extends ParamBinding {
 
   @override
   bool get usesAudioFeatures => feature.usesAnalysis;
+
+  @override
+  bool get usesCues => feature.usesCues;
 
   @override
   bool get usesTempo => feature.isBeat;
@@ -436,9 +442,15 @@ sealed class EnvelopeTrigger extends Equatable {
   /// `null`); the beat clock stands in while the music has no drum hits.
   const factory EnvelopeTrigger.drumHit({DrumClass? drum}) = DrumHitTrigger;
 
+  /// A cue of the clip's cue track (`BakeRequest.cues`); nothing fires
+  /// without cues.
+  static const EnvelopeTrigger cue = CueTrigger();
+
   bool get usesAudioFeatures => false;
 
   bool get usesTempo => false;
+
+  bool get usesCues => false;
 
   EnvelopeTrigger normalized() => this;
 }
@@ -519,6 +531,16 @@ final class DrumHitTrigger extends EnvelopeTrigger {
   List<Object?> get props => [drum];
 }
 
+final class CueTrigger extends EnvelopeTrigger {
+  const CueTrigger();
+
+  @override
+  bool get usesCues => true;
+
+  @override
+  List<Object?> get props => const [];
+}
+
 /// An envelope fired by [trigger]: the level rises from 0 to 1 over
 /// [attack], falls to [sustainLevel] over [decay], holds it for [sustain],
 /// falls to 0 over [release] (all clip-time durations) and the value is
@@ -556,6 +578,9 @@ final class EnvelopeBinding extends ParamBinding {
 
   @override
   bool get usesTempo => trigger.usesTempo;
+
+  @override
+  bool get usesCues => trigger.usesCues;
 
   /// This binding with its fields in their valid ranges.
   EnvelopeBinding normalized() => EnvelopeBinding(
@@ -654,6 +679,9 @@ final class StackedBinding extends ParamBinding {
   @override
   bool get usesTempo =>
       base.usesTempo || modulators.any((m) => m.source.usesTempo || (m.depthBinding?.usesTempo ?? false));
+
+  @override
+  bool get usesCues => base.usesCues || modulators.any((m) => m.source.usesCues || (m.depthBinding?.usesCues ?? false));
 
   StackedBinding copyWith({ParamBinding? base, List<Modulator>? modulators}) =>
       StackedBinding(base: base ?? this.base, modulators: modulators ?? this.modulators);

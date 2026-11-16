@@ -109,6 +109,19 @@ final class DrumHits extends Equatable {
     return best;
   }
 
+  /// The hit of [cls] nearest to [time] (the earlier one on a tie), or
+  /// `null` without hits of [cls].
+  DrumHit? nearest(DrumClass cls, Duration time) {
+    final list = _hits[cls];
+    if (list == null || list.isEmpty) return null;
+    final i = _firstAfter(_micros[cls]!, time.inMicroseconds);
+    final before = i > 0 ? list[i - 1] : null;
+    final after = i < list.length ? list[i] : null;
+    if (before == null) return after;
+    if (after == null) return before;
+    return (after.time - time) < (time - before.time) ? after : before;
+  }
+
   /// The last hit of [cls] at or before [time], or `null`.
   DrumHit? lastAtOrBefore(DrumClass cls, Duration time) {
     final list = _hits[cls];

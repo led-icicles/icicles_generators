@@ -157,10 +157,15 @@ final class ChoiceOption extends Equatable {
   final String id;
   final LocalizedText label;
 
-  const ChoiceOption(this.id, this.label);
+  /// Whether the program reads the clip's cues while this option is chosen
+  /// (e.g. Strobe's "Cues" trigger), so a bake then needs
+  /// `BakeRequest.cues` (see [paramsUseCues]).
+  final bool usesCues;
+
+  const ChoiceOption(this.id, this.label, {this.usesCues = false});
 
   @override
-  List<Object?> get props => [id, label];
+  List<Object?> get props => [id, label, usesCues];
 }
 
 /// One of [options], stored by option id.
@@ -178,6 +183,12 @@ final class ChoiceParam extends ParamSpec {
 
   @override
   ParamBinding get defaultBinding => ConstantBinding(defaultValue);
+
+  /// The option chosen by [binding] (salvaged: a choice is always constant).
+  ChoiceOption chosen(ParamBinding? binding) {
+    final id = (salvage(binding) as ConstantBinding).value;
+    return options.firstWhere((o) => o.id == id);
+  }
 
   @override
   ParamBinding salvage(ParamBinding? binding) {

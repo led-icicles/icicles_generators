@@ -1,3 +1,19 @@
+## 0.9.0
+
+- Cues: user-placed marks (the editor's cue tracks) as events. `CueHit` / `CueHits` (+ `CueHitsJson`) on the song
+  clock; `BakeRequest.cues`, passed to the resolver and the reactivity with or without audio features (a clip with
+  cues needs no soundtrack). `AudioFrame.hasCues` / `cueHit` (the cue in the frame's span — every cue fires exactly
+  one frame at any fps) / `cuePulse`, the derived key `AudioFeatureKey.cuePulse`.
+- Cue triggers (no beat fallback: no cues, no fire): `EnvelopeTrigger.cue` (`CueTrigger`, JSON `"trigger": "cue"`),
+  `ReactiveTrigger.cues`, Strobe `trigger: cues` (with `accent`, `minGapMs`, `flashMs`).
+- What reads the cues: `GeneratorInfo.usesCues` / `EffectInfo.usesCues` (a program that always does; manifest
+  `usesCues`), `ChoiceOption.usesCues` (an option that does while chosen — Strobe's `cues` trigger; manifest option
+  `usesCues`) with `ChoiceParam.chosen` and `paramsUseCues`, `ParamBinding.usesCues`, `AudioReactivity.usesCues`;
+  `needsCues` / `effectNeedsCues` (new `params` argument) and `bindingsUseCues`. `needsAudioClock` /
+  `effectNeedsAudioClock` include the cues (a clip reading cues is anchored in time) and take `params` too.
+- `DrumHits.nearest(cls, time)`.
+- Plugin protocol: optional `cues` header field (`CueHitsJson`) in `bake` / `apply`; older plugins ignore it.
+
 ## 0.8.0
 
 - Drum hits (`lib/src/time/drum_hits.dart`): `DrumClass` (`kick`, `snare`, `toms`, `hihat`, `cymbals`),

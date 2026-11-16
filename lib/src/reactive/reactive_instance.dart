@@ -102,6 +102,7 @@ final class ReactiveEngine {
     // A drum trigger's strength (`0` = no hit); 1 for the other triggers
     // when they fire.
     double strength(ReactiveTrigger trigger) {
+      if (trigger.usesCues) return audio.cueHit;
       if (trigger.isDrum && audio.hasDrums) {
         final cls = trigger.drumClass;
         return cls == null ? audio.anyDrumHit : audio.drumHit(cls);
@@ -438,10 +439,14 @@ final class ReactivePostProcessor {
     final audio = request.audio;
     if (audio != null) {
       final span = index == 0 ? framerate.frameDuration(0) : start - framerate.frameStart(index - 1);
-      return audio.sampleAt(songTime, tempo: request.tempo, beats: request.beats, drums: request.drums, span: span);
+      return audio.sampleAt(songTime,
+          tempo: request.tempo, beats: request.beats, drums: request.drums, cues: request.cues, span: span);
     }
-    if (request.tempo == null && request.beats == null) return AudioFrame.silent;
-    return AudioFrame.fromColumns(_silent, tempo: request.tempo, beats: request.beats, time: songTime);
+    final cues = request.cues;
+    if (request.tempo == null && request.beats == null && (cues == null || cues.isEmpty)) return AudioFrame.silent;
+    final span = index == 0 ? framerate.frameDuration(0) : start - framerate.frameStart(index - 1);
+    return AudioFrame.fromColumns(_silent,
+        tempo: request.tempo, beats: request.beats, time: songTime, cues: cues, span: span);
   }
 
   /// Post-processes frame [index] (frames in order from 0; an earlier index

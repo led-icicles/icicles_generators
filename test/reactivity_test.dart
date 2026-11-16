@@ -27,6 +27,7 @@ BakeRequest _request({
   AudioFeatures? audio,
   Tempo? tempo,
   DrumHits? drums,
+  CueHits? cues,
   double seconds = 2,
   Map<String, ParamBinding> bindings = const {},
 }) =>
@@ -37,6 +38,7 @@ BakeRequest _request({
       audio: audio,
       tempo: tempo,
       drums: drums,
+      cues: cues,
       reactivity: reactivity,
     );
 
@@ -633,6 +635,22 @@ void main() {
       expect(baked.toBytes(), bakeBytes(const _Dot(), request));
       final header = pipe.sent.where((m) => m.type == PluginProtocol.bake).single.header;
       expect(DrumHitsJson.fromJson(header['drums']), drums);
+      await pipe.client.close();
+    });
+
+    test('cues cross the protocol; a cue flash bakes byte-identically without audio', () async {
+      final pipe = _Pipe(const [_Dot()]);
+      await pipe.client.handshake();
+      final cueFlash = brightnessOnly.withMode(
+        ReactiveModeKind.flash,
+        const ReactiveMode(min: 0, max: 1, trigger: ReactiveTrigger.cues, decay: Duration(milliseconds: 100)),
+      );
+      final cues = CueHits(const [CueHit(Duration(milliseconds: 300)), CueHit(Duration(milliseconds: 1200), 0.5)]);
+      final request = _request(reactivity: cueFlash, cues: cues, seconds: 2);
+      final baked = await pipe.client.bake('test.dot', request);
+      expect(baked.toBytes(), bakeBytes(const _Dot(), request));
+      final header = pipe.sent.where((m) => m.type == PluginProtocol.bake).single.header;
+      expect(CueHitsJson.fromJson(header['cues']), cues);
       await pipe.client.close();
     });
 

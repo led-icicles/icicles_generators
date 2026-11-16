@@ -60,6 +60,7 @@ abstract final class ManifestJson {
         'description': textToJson(info.description),
         'category': info.category.name,
         'usesAudio': info.usesAudio,
+        if (info.usesCues) 'usesCues': true,
         'defaultLengthMs': info.defaultLength.inMilliseconds,
         if (info.reactiveTargets.isNotEmpty) 'reactiveTargets': reactiveTargetsToJson(info.reactiveTargets),
       };
@@ -95,6 +96,7 @@ abstract final class ManifestJson {
         orElse: () => GeneratorCategory.basic,
       ),
       usesAudio: json['usesAudio'] == true,
+      usesCues: json['usesCues'] == true,
       defaultLength: length is int && length > 0 ? Duration(milliseconds: length) : const Duration(seconds: 10),
       reactiveTargets: reactiveTargetsFromJson(json['reactiveTargets']),
     );
@@ -107,6 +109,7 @@ abstract final class ManifestJson {
         'description': textToJson(info.description),
         'category': info.category.name,
         'usesAudio': info.usesAudio,
+        if (info.usesCues) 'usesCues': true,
         'defaultLengthMs': info.defaultLength.inMilliseconds,
         if (info.reactiveTargets.isNotEmpty) 'reactiveTargets': reactiveTargetsToJson(info.reactiveTargets),
       };
@@ -128,6 +131,7 @@ abstract final class ManifestJson {
         orElse: () => EffectCategory.color,
       ),
       usesAudio: json['usesAudio'] == true,
+      usesCues: json['usesCues'] == true,
       defaultLength: length is int && length > 0 ? Duration(milliseconds: length) : const Duration(seconds: 10),
       reactiveTargets: reactiveTargetsFromJson(json['reactiveTargets']),
     );
@@ -158,7 +162,8 @@ abstract final class ManifestJson {
           ChoiceParam() => {
               'kind': 'choice',
               'options': [
-                for (final option in spec.options) {'id': option.id, 'label': textToJson(option.label)},
+                for (final option in spec.options)
+                  {'id': option.id, 'label': textToJson(option.label), if (option.usesCues) 'usesCues': true},
               ],
               'default': spec.defaultValue,
             },
@@ -213,7 +218,8 @@ abstract final class ManifestJson {
           if (json['options'] case final List<Object?> list)
             for (final option in list)
               if (option case {'id': final String optionId, 'label': final Object? optionLabel})
-                if (textFromJson(optionLabel) case final text?) ChoiceOption(optionId, text),
+                if (textFromJson(optionLabel) case final text?)
+                  ChoiceOption(optionId, text, usesCues: (option as Map)['usesCues'] == true),
         ];
         if (options.isEmpty) return null;
         return ChoiceParam(

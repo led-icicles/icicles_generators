@@ -6,8 +6,10 @@ import '../generator/generator.dart';
 import '../generator/generator_exception.dart';
 import '../generator/generator_info.dart';
 import '../params/param_binding.dart';
+import '../params/param_spec.dart';
 import '../reactive/audio_reactivity.dart';
 import '../time/beat_grid.dart';
+import '../time/cue_hits.dart';
 import '../time/drum_hits.dart';
 import '../time/frame_grid.dart';
 import '../time/tempo.dart';
@@ -47,6 +49,12 @@ final class BakeRequest extends Equatable {
   /// not use the analysed audio ignores them.
   final DrumHits? drums;
 
+  /// The clip's cues (the marks of its cue track) on the same clock as
+  /// [audio] (song time; the host converts them from timeline time), `null`
+  /// without a cue track. Read whether or not the bake uses the audio — a
+  /// clip with cues needs no soundtrack.
+  final CueHits? cues;
+
   /// Time on the [audio]/[tempo] clock of generator time 0 (the song time
   /// at the clip's source start).
   final Duration audioOrigin;
@@ -73,6 +81,7 @@ final class BakeRequest extends Equatable {
     this.tempo,
     this.beats,
     this.drums,
+    this.cues,
     this.audioOrigin = Duration.zero,
     this.name,
     this.macros = const {},
@@ -88,6 +97,7 @@ final class BakeRequest extends Equatable {
     Tempo? tempo,
     BeatGrid? beats,
     DrumHits? drums,
+    CueHits? cues,
     Duration audioOrigin = Duration.zero,
     String? name,
     Map<String, ParamBinding> macros = const {},
@@ -101,6 +111,7 @@ final class BakeRequest extends Equatable {
         tempo: tempo,
         beats: beats,
         drums: drums,
+        cues: cues,
         audioOrigin: audioOrigin,
         name: name,
         macros: macros,
@@ -133,6 +144,7 @@ final class BakeRequest extends Equatable {
         tempo: tempo,
         beats: beats,
         drums: drums,
+        cues: cues,
         audioOrigin: audioOrigin,
         name: name,
         macros: macros,
@@ -171,8 +183,20 @@ final class BakeRequest extends Equatable {
   }
 
   @override
-  List<Object?> get props =>
-      [setup, frameCount, bindings, audio?.contentHash, tempo, beats, drums, audioOrigin, name, macros, reactivity];
+  List<Object?> get props => [
+        setup,
+        frameCount,
+        bindings,
+        audio?.contentHash,
+        tempo,
+        beats,
+        drums,
+        cues,
+        audioOrigin,
+        name,
+        macros,
+        reactivity
+      ];
 }
 
 /// Whether a generator with [info] baked with [bindings] (and [reactivity])
@@ -183,16 +207,44 @@ bool needsAudioFeatures(GeneratorInfo info, Map<String, ParamBinding> bindings,
         {Map<String, ParamBinding> macros = const {}, AudioReactivity reactivity = AudioReactivity.none}) =>
     info.usesAudio || bindingsUseAudio(bindings, macros) || reactivity.usesAudioFeatures;
 
-/// Whether the output depends on the audio clock (audio features or the
-/// tempo), so the clip's position relative to the song matters
+/// Whether the output depends on the audio clock (audio features, the
+/// tempo or the cues), so the clip's position relative to the song matters
 /// (`audioOrigin`).
+///
+/// [params] are the program's parameters (a chosen [ChoiceOption.usesCues]
+/// option reads the cues).
 bool needsAudioClock(GeneratorInfo info, Map<String, ParamBinding> bindings,
-        {Map<String, ParamBinding> macros = const {}, AudioReactivity reactivity = AudioReactivity.none}) =>
+        {Map<String, ParamBinding> macros = const {},
+        AudioReactivity reactivity = AudioReactivity.none,
+        List<ParamSpec> params = const []}) =>
     info.usesAudio ||
     bindingsUseAudio(bindings, macros) ||
     bindingsUseTempo(bindings, macros) ||
     reactivity.usesAudioFeatures ||
-    reactivity.usesTempo;
+    reactivity.usesTempo ||
+    needsCues(info, bindings, macros: macros, reactivity: reactivity, params: params);
+
+/// Whether a generator with [info] and [params] baked with [bindings] (and
+/// [reactivity]) reads the clip's cues (then a bake needs
+/// `BakeRequest.cues`): the program always does ([GeneratorInfo.usesCues]),
+/// a chosen option does ([paramsUseCues]), a binding or a macro it reads
+/// has a cue trigger, or the reactivity does.
+bool needsCues(GeneratorInfo info, Map<String, ParamBinding> bindings,
+        {Map<String, ParamBinding> macros = const {},
+        AudioReactivity reactivity = AudioReactivity.none,
+        List<ParamSpec> params = const []}) =>
+    info.usesCues || paramsUseCues(params, bindings) || bindingsUseCues(bindings, macros) || reactivity.usesCues;
+
+/// Whether a choice parameter of [params] has an option chosen by
+/// [bindings] (its default without a binding) that reads the cues
+/// ([ChoiceOption.usesCues]).
+bool paramsUseCues(List<ParamSpec> params, Map<String, ParamBinding> bindings) => params.any((spec) =>
+    spec is ChoiceParam && spec.options.any((ChoiceOption o) => o.usesCues) && spec.chosen(bindings[spec.id]).usesCues);
+
+/// Whether any of [bindings] reads the clip's cues, following the
+/// [MacroBinding]s into [macros].
+bool bindingsUseCues(Map<String, ParamBinding> bindings, Map<String, ParamBinding> macros) =>
+    bindings.values.any((b) => b.usesCues || _macrosOf(b).any((id) => macros[id]?.usesCues ?? false));
 
 /// Whether any of [bindings] reads the analysed audio, following the
 /// [MacroBinding]s into [macros].

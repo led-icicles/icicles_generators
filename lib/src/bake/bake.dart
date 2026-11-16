@@ -57,6 +57,7 @@ void renderGeneratorFrames(Generator generator, BakeRequest request, BakedFrameC
     tempo: request.tempo,
     beats: request.beats,
     drums: request.drums,
+    cues: request.cues,
     audioOrigin: request.audioOrigin,
     macros: request.macros,
     seed: setup.seed,

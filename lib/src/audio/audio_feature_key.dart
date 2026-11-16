@@ -58,7 +58,11 @@ enum AudioFeatureKey {
   snarePulse,
 
   /// Like [kickPulse] for the hi-hats.
-  hihatPulse;
+  hihatPulse,
+
+  /// The clip's cues (user-placed marks): the strength of the last cue,
+  /// decaying like [kickPulse]; 0 without cues.
+  cuePulse;
 
   /// Number of keys stored as [AudioFeatures] columns.
   static const columnCount = 22;
@@ -81,6 +85,9 @@ enum AudioFeatureKey {
 
   /// Whether the value needs the analysed audio (features or drum hits).
   bool get usesAnalysis => isColumn || isDrum;
+
+  /// Whether the key reads the clip's cues.
+  bool get usesCues => this == cuePulse;
 
   /// The key of mel band [band] (`0..15`).
   static AudioFeatureKey band(int band) {

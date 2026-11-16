@@ -9,6 +9,7 @@ import '../generator/generator.dart';
 import '../generator/generator_exception.dart';
 import '../params/param_binding.dart';
 import '../params/param_resolver.dart';
+import '../params/param_spec.dart';
 import '../reactive/audio_reactivity.dart';
 import '../reactive/reactive_instance.dart';
 import 'effect.dart';
@@ -24,12 +25,23 @@ bool effectNeedsAudioFeatures(EffectInfo info, Map<String, ParamBinding> binding
 /// tempo), so the clip's position relative to the song matters
 /// (`audioOrigin`).
 bool effectNeedsAudioClock(EffectInfo info, Map<String, ParamBinding> bindings,
-        {Map<String, ParamBinding> macros = const {}, AudioReactivity reactivity = AudioReactivity.none}) =>
+        {Map<String, ParamBinding> macros = const {},
+        AudioReactivity reactivity = AudioReactivity.none,
+        List<ParamSpec> params = const []}) =>
     info.usesAudio ||
     bindingsUseAudio(bindings, macros) ||
     bindingsUseTempo(bindings, macros) ||
     reactivity.usesAudioFeatures ||
-    reactivity.usesTempo;
+    reactivity.usesTempo ||
+    effectNeedsCues(info, bindings, macros: macros, reactivity: reactivity, params: params);
+
+/// Whether an effect with [info] and [params] run with [bindings] reads the
+/// clip's cues (like `needsCues`).
+bool effectNeedsCues(EffectInfo info, Map<String, ParamBinding> bindings,
+        {Map<String, ParamBinding> macros = const {},
+        AudioReactivity reactivity = AudioReactivity.none,
+        List<ParamSpec> params = const []}) =>
+    info.usesCues || paramsUseCues(params, bindings) || bindingsUseCues(bindings, macros) || reactivity.usesCues;
 
 /// Applies an [Effect] frame by frame on the frame grid of a [BakeRequest]:
 /// the app's compositor calls [applyAt] for every frame it renders with the
@@ -71,6 +83,7 @@ final class EffectRunner {
           tempo: request.tempo,
           beats: request.beats,
           drums: request.drums,
+          cues: request.cues,
           audioOrigin: request.audioOrigin,
           macros: request.macros,
           seed: request.setup.seed,

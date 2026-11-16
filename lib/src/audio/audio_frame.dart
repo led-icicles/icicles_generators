@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import '../time/beat_grid.dart';
+import '../time/cue_hits.dart';
 import '../time/drum_hits.dart';
 import '../time/tempo.dart';
 import 'audio_feature_extractor.dart';
@@ -21,6 +22,10 @@ final class AudioFrame {
   /// none), then the pulse; `null` without drum hits.
   final Float32List? _drums;
 
+  /// The cue hit in this frame's span, then the cue pulse; `null` without
+  /// cues.
+  final Float32List? _cues;
+
   /// Position within the current beat, `0..1`.
   final double beatPhase;
 
@@ -38,8 +43,15 @@ final class AudioFrame {
   final double bpm;
 
   AudioFrame._(this._columns,
-      {this.beatPhase = 0, this.barPhase = 0, this.beatPulse = 0, this.beatIndex = 0, this.bpm = 0, Float32List? drums})
-      : _drums = drums;
+      {this.beatPhase = 0,
+      this.barPhase = 0,
+      this.beatPulse = 0,
+      this.beatIndex = 0,
+      this.bpm = 0,
+      Float32List? drums,
+      Float32List? cues})
+      : _drums = drums,
+        _cues = cues;
 
   /// An all-zero frame.
   static final silent = AudioFrame._(Float32List(AudioFeatureKey.columnCount));
@@ -52,13 +64,15 @@ final class AudioFrame {
   /// The drum fields come from [drums]: [drumHit] reports the strongest hit
   /// of each class with onset in `(time − span, time]` — the frame's own
   /// span, so on a frame grid every hit reaches exactly one frame — and
-  /// [drumPulse] decays from the last hit at or before [time].
+  /// [drumPulse] decays from the last hit at or before [time]. The cue
+  /// fields ([cueHit], [cuePulse]) come from [cues] the same way.
   factory AudioFrame.fromColumns(
     List<double> columns, {
     Tempo? tempo,
     BeatGrid? beats,
     Duration time = Duration.zero,
     DrumHits? drums,
+    CueHits? cues,
     Duration span = Duration.zero,
   }) {
     if (columns.length != AudioFeatureKey.columnCount) {
@@ -66,6 +80,7 @@ final class AudioFrame {
     }
     final data = Float32List.fromList(columns);
     final drumFields = drums == null || drums.isEmpty ? null : _drumFields(drums, time, span);
+    final cueFields = cues == null || cues.isEmpty ? null : _cueFields(cues, time, span);
     if (beats != null) {
       final position = beats.beatPositionAt(time);
       final beat = position.floor();
@@ -78,9 +93,10 @@ final class AudioFrame {
         beatIndex: beat,
         bpm: beats.bpm,
         drums: drumFields,
+        cues: cueFields,
       );
     }
-    if (tempo == null) return AudioFrame._(data, drums: drumFields);
+    if (tempo == null) return AudioFrame._(data, drums: drumFields, cues: cueFields);
     final position = tempo.beatPosition(time);
     final beat = position.floor();
     final phase = position - beat;
@@ -93,8 +109,30 @@ final class AudioFrame {
       beatIndex: beat,
       bpm: tempo.bpm,
       drums: drumFields,
+      cues: cueFields,
     );
   }
+
+  static Float32List _cueFields(CueHits cues, Duration time, Duration span) {
+    final out = Float32List(2);
+    out[0] = cues.strongestIn(time - span, time)?.strength ?? 0;
+    final last = cues.lastAtOrBefore(time);
+    if (last != null) {
+      out[1] = last.strength * math.exp(-(time - last.time).inMicroseconds / drumPulseDecay.inMicroseconds);
+    }
+    return out;
+  }
+
+  /// Whether the frame carries cues (the clip has a cue track with cues).
+  bool get hasCues => _cues != null;
+
+  /// The strength (`0..1`) of the strongest cue in this frame's span, 0
+  /// without one.
+  double get cueHit => _cues?[0] ?? 0;
+
+  /// The strength of the last cue, decaying with [drumPulseDecay] (0 before
+  /// the first cue and without cues).
+  double get cuePulse => _cues?[1] ?? 0;
 
   static Float32List _drumFields(DrumHits drums, Duration time, Duration span) {
     const n = 5; // DrumClass.values.length
@@ -202,6 +240,7 @@ final class AudioFrame {
         AudioFeatureKey.kickPulse => drumPulse(DrumClass.kick),
         AudioFeatureKey.snarePulse => drumPulse(DrumClass.snare),
         AudioFeatureKey.hihatPulse => drumPulse(DrumClass.hihat),
+        AudioFeatureKey.cuePulse => cuePulse,
         _ => _columns[key.index],
       };
 }

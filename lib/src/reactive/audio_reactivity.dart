@@ -109,13 +109,20 @@ enum ReactiveTrigger {
   hihat,
 
   /// Like [kick] for a hit of any drum class.
-  drums;
+  drums,
+
+  /// A cue of the clip's cue track (user-placed marks); a flash peaks at
+  /// the cue's strength. Nothing fires without cues.
+  cues;
 
   static ReactiveTrigger? fromName(String? name) => values.where((t) => t.name == name).firstOrNull;
 
   /// Whether the trigger follows the beat clock (the drum triggers as their
   /// fallback).
   bool get usesTempo => this == beat || isDrum;
+
+  /// Whether the trigger fires on the clip's cues.
+  bool get usesCues => this == cues;
 
   /// Whether the trigger fires on the detected drum hits.
   bool get isDrum => drumClass != null || this == drums;
@@ -300,6 +307,9 @@ final class AudioReactivity extends Equatable {
 
   /// Whether a triggered mode follows the beat clock.
   bool get usesTempo => isActive && modes.entries.any((e) => e.key.isTriggered && e.value.trigger.usesTempo);
+
+  /// Whether a triggered mode fires on the clip's cues.
+  bool get usesCues => isActive && modes.entries.any((e) => e.key.isTriggered && e.value.trigger.usesCues);
 
   /// The frequency range the energy is read from.
   AudioRange get audioRange =>

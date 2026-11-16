@@ -101,6 +101,7 @@ abstract final class ParamBindingJson {
               BarTrigger() => {'trigger': 'bar'},
               OnsetTrigger(:final threshold) => {'trigger': 'onset', 'threshold': _number(threshold)},
               DrumHitTrigger(:final drum) => {'trigger': 'drumHit', if (drum != null) 'drum': drum.name},
+              CueTrigger() => {'trigger': 'cue'},
               RangeHitTrigger(:final lowHz, :final highHz, :final threshold) => {
                   'trigger': 'rangeHit',
                   'lowHz': _number(lowHz),
@@ -288,6 +289,7 @@ abstract final class ParamBindingJson {
           'bar' => EnvelopeTrigger.bar,
           'onset' => OnsetTrigger(threshold: _double(json['threshold']) ?? 0.5),
           'drumHit' => DrumHitTrigger(drum: DrumClass.fromName(json['drum'] is String ? json['drum'] as String : null)),
+          'cue' => EnvelopeTrigger.cue,
           'rangeHit' => RangeHitTrigger(
               lowHz: _double(json['lowHz']) ?? RangeHitTrigger.minHz,
               highHz: _double(json['highHz']) ?? RangeHitTrigger.maxHz,

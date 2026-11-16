@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import '../time/beat_grid.dart';
+import '../time/cue_hits.dart';
 import '../time/drum_hits.dart';
 import '../time/tempo.dart';
 import 'audio_feature_key.dart';
@@ -92,7 +93,8 @@ final class AudioFeatures {
   /// all zero outside `[0, duration)`. The beat fields come from [beats]
   /// when given, else from [tempo]; the drum fields from [drums] over the
   /// frame [span] (see [AudioFrame.fromColumns]).
-  AudioFrame sampleAt(Duration time, {Tempo? tempo, BeatGrid? beats, DrumHits? drums, Duration span = Duration.zero}) {
+  AudioFrame sampleAt(Duration time,
+      {Tempo? tempo, BeatGrid? beats, DrumHits? drums, CueHits? cues, Duration span = Duration.zero}) {
     const columns = AudioFeatureKey.columnCount;
     final values = Float32List(columns);
     if (!time.isNegative && time < duration && frameCount > 0) {
@@ -106,7 +108,7 @@ final class AudioFeatures {
         values[c] = _data[a + c] * (1 - f) + _data[b + c] * f;
       }
     }
-    return AudioFrame.fromColumns(values, tempo: tempo, beats: beats, time: time, drums: drums, span: span);
+    return AudioFrame.fromColumns(values, tempo: tempo, beats: beats, time: time, drums: drums, cues: cues, span: span);
   }
 
   /// A stable hash of the content (`fnv1a64:<16 hex digits>`), a cache key

@@ -40,6 +40,11 @@ final class EffectInfo extends Equatable {
   /// bindings, which declare their own needs).
   final bool usesAudio;
 
+  /// Whether the effect reads the clip's cues (`FrameContext.audio.cueHit` /
+  /// `cuePulse`, e.g. a "cues" trigger), so the host passes
+  /// `BakeRequest.cues`. Parameter bindings declare their own needs.
+  final bool usesCues;
+
   /// Length of a new effect clip.
   final Duration defaultLength;
 
@@ -55,6 +60,7 @@ final class EffectInfo extends Equatable {
     required this.description,
     required this.category,
     this.usesAudio = false,
+    this.usesCues = false,
     this.defaultLength = const Duration(seconds: 10),
     this.reactiveTargets = const {},
   });
@@ -67,6 +73,7 @@ final class EffectInfo extends Equatable {
         description,
         category,
         usesAudio,
+        usesCues,
         defaultLength,
         for (final target in ReactiveTarget.values) reactiveTargets[target],
       ];
