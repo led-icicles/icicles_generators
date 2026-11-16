@@ -52,12 +52,15 @@ void renderGeneratorFrames(Generator generator, BakeRequest request, BakedFrameC
     framerate: framerate,
     frameCount: request.frameCount,
     audio: needsAudioFeatures(generator.info, request.bindings, macros: request.macros, reactivity: request.reactivity)
-        ? request.audio
+        ? request.levelledAudio
         : null,
     tempo: request.tempo,
     beats: request.beats,
     drums: request.drums,
     cues: request.cues,
+    deep: needsDeepFeatures(generator.info, request.bindings, macros: request.macros, reactivity: request.reactivity)
+        ? request.deep
+        : null,
     audioOrigin: request.audioOrigin,
     macros: request.macros,
     seed: setup.seed,

@@ -61,6 +61,7 @@ abstract final class ManifestJson {
         'category': info.category.name,
         'usesAudio': info.usesAudio,
         if (info.usesCues) 'usesCues': true,
+        if (info.usesDeepAudio) 'usesDeepAudio': true,
         'defaultLengthMs': info.defaultLength.inMilliseconds,
         if (info.reactiveTargets.isNotEmpty) 'reactiveTargets': reactiveTargetsToJson(info.reactiveTargets),
       };
@@ -97,6 +98,7 @@ abstract final class ManifestJson {
       ),
       usesAudio: json['usesAudio'] == true,
       usesCues: json['usesCues'] == true,
+      usesDeepAudio: json['usesDeepAudio'] == true,
       defaultLength: length is int && length > 0 ? Duration(milliseconds: length) : const Duration(seconds: 10),
       reactiveTargets: reactiveTargetsFromJson(json['reactiveTargets']),
     );
@@ -110,6 +112,7 @@ abstract final class ManifestJson {
         'category': info.category.name,
         'usesAudio': info.usesAudio,
         if (info.usesCues) 'usesCues': true,
+        if (info.usesDeepAudio) 'usesDeepAudio': true,
         'defaultLengthMs': info.defaultLength.inMilliseconds,
         if (info.reactiveTargets.isNotEmpty) 'reactiveTargets': reactiveTargetsToJson(info.reactiveTargets),
       };
@@ -132,6 +135,7 @@ abstract final class ManifestJson {
       ),
       usesAudio: json['usesAudio'] == true,
       usesCues: json['usesCues'] == true,
+      usesDeepAudio: json['usesDeepAudio'] == true,
       defaultLength: length is int && length > 0 ? Duration(milliseconds: length) : const Duration(seconds: 10),
       reactiveTargets: reactiveTargetsFromJson(json['reactiveTargets']),
     );

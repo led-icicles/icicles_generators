@@ -7,6 +7,7 @@ import '../time/drum_hits.dart';
 import '../time/tempo.dart';
 import 'audio_feature_extractor.dart';
 import 'audio_feature_key.dart';
+import 'deep_audio_features.dart';
 
 /// The audio features at one instant, all in `0..1` except [beatIndex] and
 /// [bpm]; every value is 0 without a soundtrack (and the beat fields are 0
@@ -25,6 +26,10 @@ final class AudioFrame {
   /// The cue hit in this frame's span, then the cue pulse; `null` without
   /// cues.
   final Float32List? _cues;
+
+  /// The stems (in [StemKind] order), then pitch hue, pitch clarity and key
+  /// hue (−1 for none); `null` without the deep analysis.
+  final Float32List? _deep;
 
   /// Position within the current beat, `0..1`.
   final double beatPhase;
@@ -49,9 +54,11 @@ final class AudioFrame {
       this.beatIndex = 0,
       this.bpm = 0,
       Float32List? drums,
-      Float32List? cues})
+      Float32List? cues,
+      Float32List? deep})
       : _drums = drums,
-        _cues = cues;
+        _cues = cues,
+        _deep = deep;
 
   /// An all-zero frame.
   static final silent = AudioFrame._(Float32List(AudioFeatureKey.columnCount));
@@ -65,7 +72,9 @@ final class AudioFrame {
   /// of each class with onset in `(time − span, time]` — the frame's own
   /// span, so on a frame grid every hit reaches exactly one frame — and
   /// [drumPulse] decays from the last hit at or before [time]. The cue
-  /// fields ([cueHit], [cuePulse]) come from [cues] the same way.
+  /// fields ([cueHit], [cuePulse]) come from [cues] the same way. The
+  /// stem and harmony fields ([stem], [pitchHue], [pitchClarity], [keyHue])
+  /// come from [deep] at [time], else from their fallbacks over the columns.
   factory AudioFrame.fromColumns(
     List<double> columns, {
     Tempo? tempo,
@@ -73,6 +82,7 @@ final class AudioFrame {
     Duration time = Duration.zero,
     DrumHits? drums,
     CueHits? cues,
+    DeepAudioFeatures? deep,
     Duration span = Duration.zero,
   }) {
     if (columns.length != AudioFeatureKey.columnCount) {
@@ -81,6 +91,7 @@ final class AudioFrame {
     final data = Float32List.fromList(columns);
     final drumFields = drums == null || drums.isEmpty ? null : _drumFields(drums, time, span);
     final cueFields = cues == null || cues.isEmpty ? null : _cueFields(cues, time, span);
+    final deepFields = deep == null ? null : _deepFields(deep, time);
     if (beats != null) {
       final position = beats.beatPositionAt(time);
       final beat = position.floor();
@@ -94,9 +105,10 @@ final class AudioFrame {
         bpm: beats.bpm,
         drums: drumFields,
         cues: cueFields,
+        deep: deepFields,
       );
     }
-    if (tempo == null) return AudioFrame._(data, drums: drumFields, cues: cueFields);
+    if (tempo == null) return AudioFrame._(data, drums: drumFields, cues: cueFields, deep: deepFields);
     final position = tempo.beatPosition(time);
     final beat = position.floor();
     final phase = position - beat;
@@ -110,7 +122,60 @@ final class AudioFrame {
       bpm: tempo.bpm,
       drums: drumFields,
       cues: cueFields,
+      deep: deepFields,
     );
+  }
+
+  static const _stemCount = 4; // StemKind.values.length
+
+  static Float32List _deepFields(DeepAudioFeatures deep, Duration time) {
+    final out = Float32List(_stemCount + 3);
+    for (final stem in StemKind.values) {
+      out[stem.index] = deep.stem(stem, time).clamp(0.0, 1.0);
+    }
+    final (pc, clarity) = deep.pitchAt(time);
+    out[_stemCount] = pc == null ? -1 : fifthsHue(pc);
+    out[_stemCount + 1] = clarity;
+    final key = deep.keyAt(time);
+    out[_stemCount + 2] = key == null ? -1 : fifthsHue(key.tonic);
+    return out;
+  }
+
+  /// Whether the frame carries the deep analysis (separated stems and
+  /// harmony); without it [stem], [pitchHue] and [keyHue] are approximations.
+  bool get hasDeep => _deep != null;
+
+  /// The loudness of [kind]'s stem (`0..1`). Without the deep analysis
+  /// approximated from the mix: vocals by the 300–3400 Hz energy, drums by
+  /// [onset], bass by [bass], the rest by [mid].
+  double stem(StemKind kind) {
+    final d = _deep;
+    if (d != null) return d[kind.index];
+    return switch (kind) {
+      StemKind.vocals => energyBetween(300, 3400),
+      StemKind.drums => onset,
+      StemKind.bass => bass,
+      StemKind.other => mid,
+    };
+  }
+
+  /// The melody's dominant pitch class as a hue on the circle of fifths
+  /// (see [AudioFeatureKey.pitchHue]); without the deep analysis (or in
+  /// silence) the loudest frequency [peakFrequency].
+  double get pitchHue {
+    final v = _deep?[_stemCount] ?? -1;
+    return v < 0 ? peakFrequency : v;
+  }
+
+  /// How clearly one pitch class dominates (`0..1`), 0 without the deep
+  /// analysis.
+  double get pitchClarity => _deep?[_stemCount + 1] ?? 0;
+
+  /// The key's tonic around now as a hue on the circle of fifths, 0 without
+  /// the deep analysis (or in silence).
+  double get keyHue {
+    final v = _deep?[_stemCount + 2] ?? -1;
+    return v < 0 ? 0 : v;
   }
 
   static Float32List _cueFields(CueHits cues, Duration time, Duration span) {
@@ -241,6 +306,13 @@ final class AudioFrame {
         AudioFeatureKey.snarePulse => drumPulse(DrumClass.snare),
         AudioFeatureKey.hihatPulse => drumPulse(DrumClass.hihat),
         AudioFeatureKey.cuePulse => cuePulse,
+        AudioFeatureKey.vocals => stem(StemKind.vocals),
+        AudioFeatureKey.drumsStem => stem(StemKind.drums),
+        AudioFeatureKey.bassStem => stem(StemKind.bass),
+        AudioFeatureKey.otherStem => stem(StemKind.other),
+        AudioFeatureKey.pitchHue => pitchHue,
+        AudioFeatureKey.pitchClarity => pitchClarity,
+        AudioFeatureKey.keyHue => keyHue,
         _ => _columns[key.index],
       };
 }

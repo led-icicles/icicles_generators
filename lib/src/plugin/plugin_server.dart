@@ -146,6 +146,7 @@ BakeRequest _requestOf(Map<String, Object?> header, AudioFeatures? audio) {
     beats: PluginProtocol.beatsFromJson(header['beats']),
     drums: PluginProtocol.drumsFromJson(header['drums']),
     cues: PluginProtocol.cuesFromJson(header['cues']),
+    deep: PluginProtocol.deepFromJson(header['deep']),
     audioOrigin: Duration(microseconds: origin is int ? origin : 0),
     name: header['name'] is String ? header['name'] as String : null,
     reactivity: PluginProtocol.reactivityFromJson(header['reactivity']),

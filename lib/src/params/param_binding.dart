@@ -28,6 +28,10 @@ sealed class ParamBinding extends Equatable {
 
   /// Whether the binding reads the clip's cues (`BakeRequest.cues`).
   bool get usesCues => false;
+
+  /// Whether the binding reads the deep analysis (`BakeRequest.deep`: the
+  /// separated stems or the harmony).
+  bool get usesDeepFeatures => false;
 }
 
 /// A fixed value: a `double` (number), an `int` (integer), a `bool`, a
@@ -39,6 +43,36 @@ final class ConstantBinding extends ParamBinding {
 
   @override
   List<Object?> get props => [value];
+}
+
+/// A time-valued number given in music: [beats] beats of the beat clock (a
+/// bar is [beatsPerBar] beats). Fits only number parameters with a
+/// `NumberParam.timeKind`; the resolver turns it into the parameter's unit —
+/// seconds, milliseconds, or a rate per second (`1 / duration`) — at the
+/// clock's tempo ([fallbackBpm] without one), so the value follows tempo
+/// changes.
+final class MusicalBinding extends ParamBinding {
+  static const beatsPerBar = 4;
+
+  /// Shortest and longest length.
+  static const minBeats = 1 / 64;
+  static const maxBeats = 1024.0;
+
+  final double beats;
+
+  const MusicalBinding(this.beats);
+
+  /// [bars] bars.
+  const MusicalBinding.bars(double bars) : beats = bars * beatsPerBar;
+
+  @override
+  bool get usesTempo => true;
+
+  /// [beats] in its valid range.
+  MusicalBinding normalized() => MusicalBinding(beats.isFinite ? beats.clamp(minBeats, maxBeats) : 1);
+
+  @override
+  List<Object?> get props => [beats];
 }
 
 /// A number following an audio feature: the feature (`0..1`) is smoothed by
@@ -82,6 +116,9 @@ final class AudioBinding extends ParamBinding {
 
   @override
   bool get usesTempo => feature.isBeat;
+
+  @override
+  bool get usesDeepFeatures => feature.usesDeep;
 
   /// This binding with its fields in their valid ranges.
   AudioBinding normalized() => AudioBinding(
@@ -682,6 +719,11 @@ final class StackedBinding extends ParamBinding {
 
   @override
   bool get usesCues => base.usesCues || modulators.any((m) => m.source.usesCues || (m.depthBinding?.usesCues ?? false));
+
+  @override
+  bool get usesDeepFeatures =>
+      base.usesDeepFeatures ||
+      modulators.any((m) => m.source.usesDeepFeatures || (m.depthBinding?.usesDeepFeatures ?? false));
 
   StackedBinding copyWith({ParamBinding? base, List<Modulator>? modulators}) =>
       StackedBinding(base: base ?? this.base, modulators: modulators ?? this.modulators);

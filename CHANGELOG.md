@@ -1,3 +1,40 @@
+## 0.10.0
+
+- Deep analysis features (`lib/src/audio/deep_audio_features.dart`, moved here from the app): `StemKind`,
+  `StemLevels` (per-stem loudness every 10 ms, `sampleAt`), `Chroma`, `MusicalKey` / `estimateKey`, `fifthsHue`,
+  and `DeepAudioFeatures {stems, chroma}` with `pitchAt` and a moving `keyAt` (±4 s, every 0.5 s). Binary form and
+  content hash in `DeepAudioFeaturesCodec` (`"IDF1"`). `BakeRequest.deep`, passed to the resolver and the
+  reactivity with the audio features.
+- New keys `AudioFeatureKey.vocals`, `drumsStem`, `bassStem`, `otherStem`, `pitchHue`, `pitchClarity`, `keyHue`
+  (after the columns: the feature matrix and its bytes are unchanged), with `isStem` / `isHarmony` / `usesDeep`.
+  Without the deep analysis they fall back to the mix (vocals ≈ 300–3400 Hz energy, drums ≈ onset, bass ≈ bass,
+  other ≈ mid, pitch ≈ peak frequency, key = 0). `AudioFrame.hasDeep`, `stem(kind)`, `pitchHue`, `pitchClarity`,
+  `keyHue`.
+- What reads it: `GeneratorInfo` / `EffectInfo.usesDeepAudio` (manifest `usesDeepAudio`),
+  `ParamBinding.usesDeepFeatures`, `AudioReactivity.usesDeepFeatures`; `needsDeepFeatures` /
+  `effectNeedsDeepFeatures` / `bindingsUseDeep`.
+- Reactivity: `AudioReactivity.stem` (the energy of a separated stem instead of the frequency range),
+  `ReactiveHueSource.pitch` / `key`; JSON `"stem"`, omitted when unset.
+- Musical time: `MusicalBinding {beats}` (`MusicalBinding.bars`; JSON `{"type": "musical", "beats": 2}`) for
+  time-valued number parameters — `NumberParam.timeKind` (`TimeKind.seconds` / `milliseconds` / `perSecond`,
+  declared or derived from the unit `s` / `ms` / `/s`). The resolver converts it at the beat clock's tempo
+  (120 BPM without one); accepted as a value or a stack's base, refused elsewhere at salvage.
+- Adaptive levels (`lib/src/audio/audio_levels.dart`): `AudioLevelMode {song, adaptive}`,
+  `adaptiveAudioLevels(features, window)` (moving 10th–95th percentile stretch, mel bands together, gentle
+  compression; cached), `AudioReactivity.level` / `levelWindow` (JSON `"level"`, `"levelWindowMs"`, omitted at
+  the defaults) and `BakeRequest.levelledAudio` — the program, its bindings and the reactivity read the levelled
+  features.
+- `ParamBindingJson.tryFromJson`: the binding or the reason it is unreadable (unknown type or feature, missing
+  numbers…); `ParamBindingJson.types`.
+- New generator `icicles.impact` (Impact): a one-shot hit at the clip start, or on beats, drums, cues or a bound
+  trigger (≤ 3 hits a second), shaped full / center / tips / roots / burst / sides, with travel, softness, hold,
+  exp / linear / cut-off fade, color shift.
+- New effect `icicles.fx.cascade` (Cascade delay): the tracks below delayed icicle by icicle (left / right / from
+  or to the center / random, even or eased spread, panels after the icicles, undelayed or with the nearest icicle;
+  ≤ 4 s); `cascadeOffsets`.
+- Plugin protocol: optional `deep` header field (base64 `DeepAudioFeaturesCodec`) in `bake` / `apply`, sent only
+  when the request reads it. Older plugins ignore it but cannot decode bindings with the new keys or `musical`.
+
 ## 0.9.0
 
 - Cues: user-placed marks (the editor's cue tracks) as events. `CueHit` / `CueHits` (+ `CueHitsJson`) on the song

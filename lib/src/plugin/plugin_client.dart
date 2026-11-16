@@ -191,6 +191,10 @@ final class GeneratorPluginClient {
         needsAudioFeatures(entry.info, request.bindings, macros: request.macros, reactivity: request.reactivity)
             ? request.audio
             : null;
+    final deep = audio != null &&
+            needsDeepFeatures(entry.info, request.bindings, macros: request.macros, reactivity: request.reactivity)
+        ? request.deep
+        : null;
     return _run<Animation>(
       timeout: timeout,
       audio: audio,
@@ -215,6 +219,7 @@ final class GeneratorPluginClient {
           if (request.beats != null) 'beats': PluginProtocol.beatsToJson(request.beats),
           if (request.drums case final drums? when drums.isNotEmpty) 'drums': PluginProtocol.drumsToJson(drums),
           if (request.cues case final cues? when cues.isNotEmpty) 'cues': PluginProtocol.cuesToJson(cues),
+          if (deep != null) 'deep': PluginProtocol.deepToJson(deep),
           'audioOriginUs': request.audioOrigin.inMicroseconds,
           'audioHash': hash,
           if (PluginProtocol.reactivityToJson(request.reactivity) case final reactivity?) 'reactivity': reactivity,
@@ -273,6 +278,10 @@ final class GeneratorPluginClient {
         effectNeedsAudioFeatures(entry.info, request.bindings, macros: request.macros, reactivity: request.reactivity)
             ? request.audio
             : null;
+    final deep = audio != null &&
+            effectNeedsDeepFeatures(entry.info, request.bindings, macros: request.macros, reactivity: request.reactivity)
+        ? request.deep
+        : null;
     return _run<List<AnimationView>>(
       timeout: timeout,
       audio: audio,
@@ -295,6 +304,7 @@ final class GeneratorPluginClient {
             if (request.beats != null) 'beats': PluginProtocol.beatsToJson(request.beats),
             if (request.drums case final drums? when drums.isNotEmpty) 'drums': PluginProtocol.drumsToJson(drums),
             if (request.cues case final cues? when cues.isNotEmpty) 'cues': PluginProtocol.cuesToJson(cues),
+            if (deep != null) 'deep': PluginProtocol.deepToJson(deep),
             'audioOriginUs': request.audioOrigin.inMicroseconds,
             'audioHash': hash,
             if (PluginProtocol.reactivityToJson(request.reactivity) case final reactivity?) 'reactivity': reactivity,

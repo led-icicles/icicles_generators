@@ -10,6 +10,34 @@ import 'param_binding.dart';
 /// How a number slider maps to its range.
 enum NumberScale { linear, log }
 
+/// What a time-valued number parameter measures (see
+/// [NumberParam.timeKind]); a [MusicalBinding] is converted into it.
+enum TimeKind {
+  /// A duration in seconds.
+  seconds,
+
+  /// A duration in milliseconds.
+  milliseconds,
+
+  /// A rate per second (the inverse of a duration: sweeps, cycles…).
+  perSecond;
+
+  /// The value of a duration of [seconds] in this kind.
+  double fromSeconds(double seconds) => switch (this) {
+        TimeKind.seconds => seconds,
+        TimeKind.milliseconds => seconds * 1000,
+        TimeKind.perSecond => seconds <= 0 ? double.infinity : 1 / seconds,
+      };
+
+  /// The kind a unit label stands for (`s`, `ms`, `/s`), `null` for others.
+  static TimeKind? ofUnit(String? unit) => switch (unit) {
+        's' => TimeKind.seconds,
+        'ms' => TimeKind.milliseconds,
+        '/s' => TimeKind.perSecond,
+        _ => null,
+      };
+}
+
 /// One parameter of a generator: a declarative schema (ISF/LedFx-style)
 /// from which the host builds its UI.
 ///
@@ -57,6 +85,10 @@ final class NumberParam extends ParamSpec {
   /// Unit shown next to the value (`Hz`, `%`, `s`, `×`…), not translated.
   final String? unit;
 
+  final TimeKind? _declaredTimeKind;
+
+  /// [timeKind] declares the parameter time-valued; without it the [unit]
+  /// decides (`s`, `ms`, `/s`).
   const NumberParam({
     required super.id,
     required super.label,
@@ -67,7 +99,12 @@ final class NumberParam extends ParamSpec {
     this.step,
     this.scale = NumberScale.linear,
     this.unit,
-  });
+    TimeKind? timeKind,
+  }) : _declaredTimeKind = timeKind;
+
+  /// What the value measures when it is a time (then it accepts a
+  /// [MusicalBinding]: "1 beat", "2 bars"), `null` otherwise.
+  TimeKind? get timeKind => _declaredTimeKind ?? TimeKind.ofUnit(unit);
 
   /// [value] in [min]..[max] (NaN becomes [defaultValue]).
   double clamp(double value) => value.isNaN ? defaultValue : value.clamp(math.min(min, max), math.max(min, max));
@@ -82,10 +119,11 @@ final class NumberParam extends ParamSpec {
   Object numericValue(double raw) => clamp(raw);
 
   @override
-  ParamBinding salvage(ParamBinding? binding) => _salvageNumeric(binding, clamp, defaultBinding);
+  ParamBinding salvage(ParamBinding? binding) =>
+      _salvageNumeric(binding, clamp, defaultBinding, musical: timeKind != null);
 
   @override
-  List<Object?> get props => [...super.props, min, max, defaultValue, step, scale, unit];
+  List<Object?> get props => [...super.props, min, max, defaultValue, step, scale, unit, timeKind];
 }
 
 /// An `int` in [min]..[max].
@@ -293,18 +331,25 @@ final class PaletteParam extends ParamSpec {
   List<Object?> get props => [...super.props, defaultValue];
 }
 
-ParamBinding _salvageNumeric(ParamBinding? binding, double Function(double) clamp, ParamBinding fallback) =>
-    _salvageModulator(binding, clamp, allowStacked: true) ?? fallback;
+ParamBinding _salvageNumeric(ParamBinding? binding, double Function(double) clamp, ParamBinding fallback,
+        {bool musical = false}) =>
+    _salvageModulator(binding, clamp, allowStacked: true, musical: musical) ?? fallback;
 
 /// [binding] made valid as a numeric source whose values [clamp] maps into
 /// the parameter's range, `null` when it cannot be one. Stacked bindings
 /// are accepted only with [allowStacked] (never nested); their base and
 /// sources are salvaged the same way, the modulators' own-range kinds
 /// (audio, beat, ramp, random, step, envelope) keeping their ranges.
-ParamBinding? _salvageModulator(ParamBinding? binding, double Function(double) clamp, {required bool allowStacked}) {
+///
+/// A [MusicalBinding] is kept only with [musical] (a time-valued number
+/// parameter), as a value or a stack's base — never as a modulator source.
+ParamBinding? _salvageModulator(ParamBinding? binding, double Function(double) clamp,
+    {required bool allowStacked, bool musical = false}) {
   switch (binding) {
     case ConstantBinding(:final num value):
       return ConstantBinding(clamp(value.toDouble()));
+    case MusicalBinding():
+      return musical ? binding.normalized() : null;
     case ConstantBinding() || null:
       return null;
     case AudioBinding():
@@ -333,7 +378,7 @@ ParamBinding? _salvageModulator(ParamBinding? binding, double Function(double) c
       return macroId.isEmpty ? null : binding;
     case StackedBinding(:final base, :final modulators):
       if (!allowStacked) return null;
-      final salvagedBase = _salvageModulator(base, clamp, allowStacked: false);
+      final salvagedBase = _salvageModulator(base, clamp, allowStacked: false, musical: musical);
       if (salvagedBase == null) return null;
       final kept = <Modulator>[];
       for (final m in modulators) {

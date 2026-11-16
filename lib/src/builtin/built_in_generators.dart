@@ -5,6 +5,7 @@ import 'audio_extra.dart';
 import 'basic.dart';
 import 'flicker.dart';
 import 'geometry.dart';
+import 'impact.dart';
 import 'motion.dart';
 import 'nature.dart';
 import 'particles.dart';
@@ -16,6 +17,7 @@ export 'basic.dart';
 export 'common.dart' show brightnessParam, falloff, gainParam, scaleParam, speedParam;
 export 'flicker.dart';
 export 'geometry.dart';
+export 'impact.dart';
 export 'motion.dart';
 export 'nature.dart';
 export 'particles.dart';
@@ -28,6 +30,7 @@ const List<Generator> builtInGenerators = [
   GradientGenerator(),
   RainbowGenerator(),
   StrobeGenerator(),
+  ImpactGenerator(),
   PlasmaGenerator(),
   NoiseGenerator(),
   AuroraGenerator(),

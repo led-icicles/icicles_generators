@@ -6,6 +6,7 @@ import 'package:icicles_animation_dart/icicles_animation_dart.dart';
 import '../audio/audio_feature_key.dart';
 import '../audio/audio_features.dart';
 import '../audio/audio_frame.dart';
+import '../audio/deep_audio_features.dart';
 import '../time/beat_grid.dart';
 import '../time/cue_hits.dart';
 import '../time/drum_hits.dart';
@@ -53,6 +54,10 @@ final class ParamResolver {
 
   /// The clip's cues on the [audio] clock; read with or without [audio].
   final CueHits? cues;
+
+  /// The deep analysis (stems, harmony) on the [audio] clock; read only
+  /// with [audio] (its keys fall back to the features without it).
+  final DeepAudioFeatures? deep;
   final Duration audioOrigin;
   final int seed;
 
@@ -77,6 +82,7 @@ final class ParamResolver {
     this.beats,
     this.drums,
     this.cues,
+    this.deep,
     this.audioOrigin = Duration.zero,
     Map<String, ParamBinding> macros = const {},
     this.seed = 0,
@@ -123,7 +129,7 @@ final class ParamResolver {
     final cues = this.cues;
     final hasCues = cues != null && cues.isNotEmpty;
     final frame = features != null
-        ? features.sampleAt(songTime, tempo: tempo, beats: beats, drums: drums, cues: cues, span: dt)
+        ? features.sampleAt(songTime, tempo: tempo, beats: beats, drums: drums, cues: cues, deep: deep, span: dt)
         : (!_hasBeatClock && !hasCues
             ? AudioFrame.silent
             : AudioFrame.fromColumns(_silentColumns, tempo: tempo, beats: beats, time: songTime, cues: cues, span: dt));
@@ -136,11 +142,11 @@ final class ParamResolver {
     for (final spec in specs) {
       final binding = bindings[spec.id]!;
       values[spec.id] = switch (spec) {
-        NumberParam(:final min, :final max, :final defaultValue) => spec.numericValue(
-            _asNumber(_evaluate(binding, spec.id, f, (min: min, max: max))) ?? defaultValue,
+        NumberParam(:final min, :final max, :final defaultValue, :final timeKind) => spec.numericValue(
+            _asNumber(_evaluate(binding, spec.id, f, (min: min, max: max, time: timeKind))) ?? defaultValue,
           ),
         IntParam(:final min, :final max, :final defaultValue) => spec.numericValue(
-            _asNumber(_evaluate(binding, spec.id, f, (min: min.toDouble(), max: max.toDouble()))) ??
+            _asNumber(_evaluate(binding, spec.id, f, (min: min.toDouble(), max: max.toDouble(), time: null))) ??
                 defaultValue.toDouble(),
           ),
         ColorParam(:final defaultValue) => switch (_evaluate(binding, spec.id, f, _unitRange)) {
@@ -161,7 +167,7 @@ final class ParamResolver {
     _lastAudio = frame;
   }
 
-  static const _unitRange = (min: 0.0, max: 1.0);
+  static const _unitRange = (min: 0.0, max: 1.0, time: null);
 
   static double? _asNumber(Object? value) => value is num ? value.toDouble() : null;
 
@@ -172,6 +178,7 @@ final class ParamResolver {
   Object? _evaluate(ParamBinding binding, String key, _Frame f, _Range range, {bool inMacro = false}) =>
       switch (binding) {
         ConstantBinding(:final value) => value,
+        MusicalBinding(:final beats) => range.time?.fromSeconds(beats * _beatSeconds),
         AudioBinding() => _audioValue(key, binding, f),
         BeatBinding() => _beatValue(binding, f.songTime),
         RampBinding() => _rampValue(binding, f.index),
@@ -397,7 +404,7 @@ final class ParamResolver {
     return value;
   }
 
-  static const _depthRange = (min: -1.0, max: 1.0);
+  static const _depthRange = (min: -1.0, max: 1.0, time: null);
 
   /// The range a modulator source is normalized across: its own for the
   /// kinds that have one, the parameter's for the rest.
@@ -412,7 +419,9 @@ final class ParamResolver {
       };
 }
 
-typedef _Range = ({double min, double max});
+/// A parameter's range and, for a time-valued one, what it measures (the
+/// unit a [MusicalBinding] is converted into).
+typedef _Range = ({double min, double max, TimeKind? time});
 
 final class _Frame {
   final int index;

@@ -1,5 +1,9 @@
+import 'dart:convert';
+
 import 'package:icicles_animation_dart/icicles_animation_dart.dart';
 
+import '../audio/deep_audio_features.dart';
+import '../audio/deep_audio_features_codec.dart';
 import '../generator/generator.dart';
 import '../generator/generator_exception.dart';
 import '../reactive/audio_reactivity.dart';
@@ -36,7 +40,11 @@ const pluginProtocolVersion = 1;
 ///   detected drum hits in the `DrumHitsJson` form, since 0.8.0, optional —
 ///   an older plugin ignores it and its drum triggers follow the beat clock;
 ///   `cues`: the clip's cues in the `CueHitsJson` form, since 0.9.0,
-///   optional — an older plugin ignores it), with the
+///   optional — an older plugin ignores it; `deep`: the deep analysis
+///   (stems, harmony) as base64 `DeepAudioFeaturesCodec` bytes, since
+///   0.10.0, optional and sent only when the request reads it — an older
+///   plugin ignores it, and fails to decode bindings with the new keys or
+///   a `musical` binding), with the
 ///   `AudioFeatures` bytes as payload the first time a hash is used on the
 ///   connection (the plugin caches them by `audioHash`).
 /// - plugin → host `frames {requestId, first, count}` with a payload of
@@ -146,6 +154,21 @@ abstract final class PluginProtocol {
 
   /// Decodes [cuesToJson]; `null` for a missing or malformed value.
   static CueHits? cuesFromJson(Object? json) => CueHitsJson.fromJson(json);
+
+  /// The `deep` header field: base64 of [DeepAudioFeaturesCodec.toBytes].
+  static String deepToJson(DeepAudioFeatures deep) => base64Encode(DeepAudioFeaturesCodec.toBytes(deep));
+
+  /// Decodes [deepToJson]; `null` for a missing or malformed value.
+  static DeepAudioFeatures? deepFromJson(Object? json) {
+    if (json is! String) return null;
+    try {
+      return DeepAudioFeaturesCodec.fromBytes(base64Decode(json));
+    } on FormatException {
+      return null;
+    } on ArgumentError {
+      return null;
+    }
+  }
 
   static GeneratorErrorKind errorKind(Object? name) =>
       GeneratorErrorKind.values.where((k) => k.name == name).firstOrNull ?? GeneratorErrorKind.pluginFailed;

@@ -3,6 +3,8 @@ import 'dart:math' as math;
 import 'package:equatable/equatable.dart';
 import 'package:icicles_animation_dart/icicles_animation_dart.dart';
 
+import '../audio/audio_levels.dart';
+import '../audio/deep_audio_features.dart';
 import '../time/drum_hits.dart';
 import '../util/audio_range.dart';
 import '../util/color.dart';
@@ -142,7 +144,19 @@ enum ReactiveHueSource {
   energy,
 
   /// The loudest frequency (`AudioFrame.peakFrequency`, log scale 40 Hz…16 kHz).
-  frequency;
+  frequency,
+
+  /// The melody's dominant pitch class on the circle of fifths
+  /// (`AudioFrame.pitchHue`; the loudest frequency without the deep
+  /// analysis).
+  pitch,
+
+  /// The key's tonic around now on the circle of fifths
+  /// (`AudioFrame.keyHue`; 0 without the deep analysis).
+  key;
+
+  /// Whether the source reads the deep analysis.
+  bool get usesDeep => this == pitch || this == key;
 
   static ReactiveHueSource? fromName(String? name) => values.where((s) => s.name == name).firstOrNull;
 }
@@ -267,6 +281,19 @@ final class AudioReactivity extends Equatable {
   final double lowHz;
   final double highHz;
 
+  /// The separated stem the energy is read from instead of [range] (the
+  /// deep analysis; approximated from the mix without it), `null` for the
+  /// frequency range.
+  final StemKind? stem;
+
+  /// How the clip's audio input is levelled — for the reactivity, the
+  /// bindings and the audio-driven program alike, whether or not the
+  /// reactivity is [enabled].
+  final AudioLevelMode level;
+
+  /// The window [AudioLevelMode.adaptive] levels over.
+  final Duration levelWindow;
+
   /// Gain of the energy (`0..4`, 1 = as analysed).
   final double sensitivity;
 
@@ -289,6 +316,9 @@ final class AudioReactivity extends Equatable {
     this.range = AudioRangePreset.lows,
     this.lowHz = audioRangeMinHz,
     this.highHz = 250,
+    this.stem,
+    this.level = AudioLevelMode.song,
+    this.levelWindow = defaultLevelWindow,
     this.sensitivity = 1,
     this.attack = const Duration(milliseconds: 10),
     this.release = const Duration(milliseconds: 150),
@@ -311,6 +341,11 @@ final class AudioReactivity extends Equatable {
   /// Whether a triggered mode fires on the clip's cues.
   bool get usesCues => isActive && modes.entries.any((e) => e.key.isTriggered && e.value.trigger.usesCues);
 
+  /// Whether the reactivity reads the deep analysis: the energy follows a
+  /// [stem], or the hue follows the pitch or the key.
+  bool get usesDeepFeatures =>
+      isActive && (stem != null || (modes[ReactiveModeKind.hue]?.hueSource.usesDeep ?? false));
+
   /// The frequency range the energy is read from.
   AudioRange get audioRange =>
       range == AudioRangePreset.custom ? AudioRange(lowHz, highHz) : AudioRange.ofPreset(range);
@@ -325,6 +360,9 @@ final class AudioReactivity extends Equatable {
         range: range,
         lowHz: lowHz.isFinite ? lowHz.clamp(audioRangeMinHz, audioRangeMaxHz) : audioRangeMinHz,
         highHz: highHz.isFinite ? highHz.clamp(audioRangeMinHz, audioRangeMaxHz) : audioRangeMaxHz,
+        stem: stem,
+        level: level,
+        levelWindow: clampLevelWindow(levelWindow),
         sensitivity: sensitivity.isFinite ? sensitivity.clamp(0.0, maxSensitivity) : 1.0,
         attack: _clampDuration(attack),
         release: _clampDuration(release),
@@ -349,6 +387,10 @@ final class AudioReactivity extends Equatable {
     AudioRangePreset? range,
     double? lowHz,
     double? highHz,
+    StemKind? stem,
+    bool clearStem = false,
+    AudioLevelMode? level,
+    Duration? levelWindow,
     double? sensitivity,
     Duration? attack,
     Duration? release,
@@ -361,6 +403,9 @@ final class AudioReactivity extends Equatable {
         range: range ?? this.range,
         lowHz: lowHz ?? this.lowHz,
         highHz: highHz ?? this.highHz,
+        stem: clearStem ? null : (stem ?? this.stem),
+        level: level ?? this.level,
+        levelWindow: levelWindow ?? this.levelWindow,
         sensitivity: sensitivity ?? this.sensitivity,
         attack: attack ?? this.attack,
         release: release ?? this.release,
@@ -377,6 +422,9 @@ final class AudioReactivity extends Equatable {
         range,
         lowHz,
         highHz,
+        stem,
+        level,
+        levelWindow,
         sensitivity,
         attack,
         release,
@@ -396,6 +444,7 @@ final class AudioReactivity extends Equatable {
 ///
 /// ```json
 /// {"enabled": true, "range": "lows", "lowHz": 20, "highHz": 250, "sensitivity": 1.0,
+///  "stem": "vocals", "level": "adaptive", "levelWindowMs": 8000,     // optional, omitted at defaults
 ///  "attackMs": 10, "releaseMs": 150, "threshold": 0.0, "invert": false,
 ///  "modes": {"brightness": {"min": 0.2, "max": 1.0},
 ///            "flash": {"min": 0.0, "max": 1.0, "trigger": "beat", "decayMs": 300, "color": "#ffffff"},
@@ -411,6 +460,9 @@ abstract final class AudioReactivityJson {
         'range': r.range.id,
         'lowHz': _number(r.lowHz),
         'highHz': _number(r.highHz),
+        if (r.stem case final stem?) 'stem': stem.name,
+        if (r.level != AudioLevelMode.song) 'level': r.level.name,
+        if (r.levelWindow != defaultLevelWindow) 'levelWindowMs': r.levelWindow.inMicroseconds / 1000,
         'sensitivity': _number(r.sensitivity),
         'attackMs': r.attack.inMicroseconds / 1000,
         'releaseMs': r.release.inMicroseconds / 1000,
@@ -448,6 +500,9 @@ abstract final class AudioReactivityJson {
       range: json['range'] is String ? AudioRangePreset.fromId(json['range'] as String, base.range) : base.range,
       lowHz: _double(json['lowHz']) ?? base.lowHz,
       highHz: _double(json['highHz']) ?? base.highHz,
+      stem: StemKind.values.where((k) => k.name == json['stem']).firstOrNull,
+      level: AudioLevelMode.values.where((m) => m.name == json['level']).firstOrNull ?? base.level,
+      levelWindow: _durationMs(json['levelWindowMs']) ?? base.levelWindow,
       sensitivity: _double(json['sensitivity']) ?? base.sensitivity,
       attack: _durationMs(json['attackMs']) ?? base.attack,
       release: _durationMs(json['releaseMs']) ?? base.release,

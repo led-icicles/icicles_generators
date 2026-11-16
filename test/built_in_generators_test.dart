@@ -33,6 +33,12 @@ const companions = <String, Map<String, Map<String, ParamBinding>>>{
     'rangeLowHz': {'trigger': ConstantBinding('range'), 'range': ConstantBinding('custom')},
     'rangeHighHz': {'trigger': ConstantBinding('range'), 'range': ConstantBinding('custom')},
   },
+  // The trigger value only fires with the "trigger value" trigger; the end
+  // color only shows with the color shift on.
+  'icicles.impact': {
+    'fire': {'trigger': ConstantBinding('fire')},
+    'endColor': {'fadeColor': ConstantBinding(true)},
+  },
 };
 
 /// The companions of [spec] in [generator]: the explicit ones, else the
@@ -55,12 +61,15 @@ Map<String, ParamBinding> companionsOf(Generator generator, ParamSpec spec) {
 const maxParams = <String, int>{
   // Drum triggers (accent, minimum gap) on top of the beat and audio ones.
   'icicles.strobe': 13,
+  // Trigger, shape, fade curve and color shift of a one-shot hit.
+  'icicles.impact': 13,
 };
 
 const overrides = <String, Map<String, ParamBinding>>{
   // A constant trigger rises only at frame 0, where the interval timer fires
   // the same wave; a ramp crosses ½ at 1 s and adds one.
   'icicles.shockwave': {'trigger': RampBinding(from: 0, to: 1)},
+  'icicles.impact': {'fire': RampBinding(from: 0, to: 1)},
   // "Open once" equals the first half of "open and close" (3 s period).
   'icicles.curtain': {'motion': ConstantBinding('close')},
   // A full turn of the hue wheel is the same hue.
@@ -74,7 +83,7 @@ void main() {
     expect(ids, everyElement(startsWith('icicles.')));
     expect(builtInGeneratorRegistry().find('icicles.plasma'), isA<PlasmaGenerator>());
     expect(builtInGeneratorRegistry().find('icicles.text'), isA<TextGenerator>());
-    expect(builtInGenerators, hasLength(52));
+    expect(builtInGenerators, hasLength(53));
   });
 
   test('every audio generator that follows the spectrum has the shared range params', () {

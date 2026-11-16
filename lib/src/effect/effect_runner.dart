@@ -21,6 +21,12 @@ bool effectNeedsAudioFeatures(EffectInfo info, Map<String, ParamBinding> binding
         {Map<String, ParamBinding> macros = const {}, AudioReactivity reactivity = AudioReactivity.none}) =>
     info.usesAudio || bindingsUseAudio(bindings, macros) || reactivity.usesAudioFeatures;
 
+/// Whether an effect with [info] run with [bindings] reads the deep analysis
+/// (like `needsDeepFeatures`).
+bool effectNeedsDeepFeatures(EffectInfo info, Map<String, ParamBinding> bindings,
+        {Map<String, ParamBinding> macros = const {}, AudioReactivity reactivity = AudioReactivity.none}) =>
+    info.usesDeepAudio || bindingsUseDeep(bindings, macros) || reactivity.usesDeepFeatures;
+
 /// Whether the output depends on the audio clock (audio features or the
 /// tempo), so the clip's position relative to the song matters
 /// (`audioOrigin`).
@@ -78,12 +84,16 @@ final class EffectRunner {
           frameCount: request.frameCount,
           audio: effectNeedsAudioFeatures(effect.info, request.bindings,
                   macros: request.macros, reactivity: request.reactivity)
-              ? request.audio
+              ? request.levelledAudio
               : null,
           tempo: request.tempo,
           beats: request.beats,
           drums: request.drums,
           cues: request.cues,
+          deep: effectNeedsDeepFeatures(effect.info, request.bindings,
+                  macros: request.macros, reactivity: request.reactivity)
+              ? request.deep
+              : null,
           audioOrigin: request.audioOrigin,
           macros: request.macros,
           seed: request.setup.seed,

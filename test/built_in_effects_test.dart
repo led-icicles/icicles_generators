@@ -70,7 +70,7 @@ void main() {
     expect(ids.toSet().intersection(builtInGenerators.map((g) => g.info.id).toSet()), isEmpty);
     expect(builtInEffectRegistry().find('icicles.fx.trail'), isA<TrailEffect>());
     expect(builtInEffectRegistry().contains('icicles.plasma'), isFalse);
-    expect(builtInEffects, hasLength(26));
+    expect(builtInEffects, hasLength(27));
   });
 
   test('every category is used and only known ones', () {

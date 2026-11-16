@@ -47,6 +47,12 @@ final class GeneratorInfo extends Equatable {
   /// `BakeRequest.cues`. Parameter bindings declare their own needs.
   final bool usesCues;
 
+  /// Whether the program reads the deep analysis (`FrameContext.audio.stem`,
+  /// `pitchHue`, `keyHue`), so the host passes `BakeRequest.deep` (each has
+  /// a fallback from the features without it). Bindings declare their own
+  /// needs.
+  final bool usesDeepAudio;
+
   /// Length of a new clip of this generator.
   final Duration defaultLength;
 
@@ -65,6 +71,7 @@ final class GeneratorInfo extends Equatable {
     required this.category,
     this.usesAudio = false,
     this.usesCues = false,
+    this.usesDeepAudio = false,
     this.defaultLength = const Duration(seconds: 10),
     this.reactiveTargets = const {},
   });
@@ -78,6 +85,7 @@ final class GeneratorInfo extends Equatable {
         category,
         usesAudio,
         usesCues,
+        usesDeepAudio,
         defaultLength,
         for (final target in ReactiveTarget.values) reactiveTargets[target],
       ];

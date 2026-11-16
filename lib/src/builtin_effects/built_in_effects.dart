@@ -1,12 +1,14 @@
 import '../effect/effect.dart';
 import '../effect/effect_registry.dart';
 import 'blur.dart';
+import 'cascade.dart';
 import 'color.dart';
 import 'dynamics.dart';
 import 'stylize.dart';
 import 'transform.dart';
 
 export 'blur.dart';
+export 'cascade.dart';
 export 'color.dart';
 export 'common.dart' show effectPanelsParam, mixParam;
 export 'dynamics.dart';
@@ -39,6 +41,7 @@ const List<Effect> builtInEffects = [
   // Dynamics.
   TrailEffect(),
   EchoEffect(),
+  CascadeEffect(),
   StrobeGateEffect(),
   FlickerEffect(),
   GateAudioEffect(),

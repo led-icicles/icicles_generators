@@ -30,6 +30,7 @@ import 'param_binding.dart';
 ///                                    // "drumHit" with an optional "drum": "kick" | "snare" | …
 /// {"type": "stack", "base": {…}, "modulators": [{"source": {…}, "depth": 0.5, "mode": "add", "depthBinding": {…}}]}
 /// {"type": "macro", "macro": "intensity"}
+/// {"type": "musical", "beats": 2.0}          // a time-valued number parameter: 2 beats
 /// ```
 ///
 /// Decoding is lenient: unknown fields are ignored, missing optional fields
@@ -132,6 +133,7 @@ abstract final class ParamBindingJson {
             ],
           },
         MacroBinding() => {'type': 'macro', 'macro': binding.macroId},
+        MusicalBinding() => {'type': 'musical', 'beats': _number(binding.beats)},
       };
 
   /// JSON of one [Keyframe]: `{"at", "value" | "color", "easing"}`.
@@ -331,10 +333,77 @@ abstract final class ParamBindingJson {
       case 'macro':
         final id = json['macro'];
         return id is String && id.isNotEmpty ? MacroBinding(id) : null;
+      case 'musical':
+        final beats = _double(json['beats']);
+        return beats == null || beats <= 0 ? null : MusicalBinding(beats).normalized();
       default:
         return null;
     }
   }
+
+  /// The binding types [fromJson] reads.
+  static const types = [
+    'constant',
+    'audio',
+    'beat',
+    'ramp',
+    'keyframes',
+    'random',
+    'steps',
+    'envelope',
+    'stack',
+    'macro',
+    'musical',
+  ];
+
+  /// [fromJson] with the reason it failed: `(binding, null)` for a readable
+  /// binding, `(null, reason)` otherwise — an English sentence for tools and
+  /// logs, naming the offending field and the accepted values.
+  static ({ParamBinding? binding, String? error}) tryFromJson(Object? json) {
+    final binding = fromJson(json);
+    return binding != null ? (binding: binding, error: null) : (binding: null, error: _whyUnreadable(json));
+  }
+
+  static String _whyUnreadable(Object? json) {
+    if (json is! Map<String, Object?>) return 'A binding must be a JSON object.';
+    final type = json['type'];
+    if (!types.contains(type)) return 'Unknown binding type ${_quote(type)}; expected one of ${types.join(', ')}.';
+    String? missingNumbers(List<String> fields) {
+      final missing = [for (final f in fields) if (_double(json[f]) == null) f];
+      return missing.isEmpty ? null : 'The $type binding needs numeric ${missing.join(' and ')}.';
+    }
+
+    switch (type) {
+      case 'audio':
+        if (_enum(AudioFeatureKey.values, json['feature']) == null) {
+          return 'Unknown audio feature ${_quote(json['feature'])}; expected one of '
+              '${AudioFeatureKey.values.map((k) => k.name).join(', ')}.';
+        }
+        return missingNumbers(['min', 'max']) ?? 'Unreadable audio binding.';
+      case 'beat':
+        if (_enum(BeatShape.values, json['shape']) == null) {
+          return 'Unknown beat shape ${_quote(json['shape'])}; expected one of '
+              '${BeatShape.values.map((s) => s.name).join(', ')}.';
+        }
+        return missingNumbers(['min', 'max']) ?? 'Unreadable beat binding.';
+      case 'ramp':
+        return missingNumbers(['from', 'to']) ?? 'Unreadable ramp binding.';
+      case 'random' || 'steps' || 'envelope':
+        return missingNumbers(['min', 'max']) ?? 'Unreadable $type binding.';
+      case 'keyframes':
+        return 'The keyframes binding needs at least one readable key ({"at": seconds, "value": number}).';
+      case 'macro':
+        return 'The macro binding needs a non-empty "macro" id.';
+      case 'musical':
+        return 'The musical binding needs a positive number of "beats".';
+      case 'constant':
+        return 'The constant binding needs a finite "value", a "color" (#rrggbb) or a "palette".';
+      default:
+        return 'Unreadable $type binding.';
+    }
+  }
+
+  static String _quote(Object? value) => value is String ? '"$value"' : '$value';
 
   /// `{paramId: binding}` as JSON.
   static Map<String, Object?> bindingsToJson(Map<String, ParamBinding> bindings) =>

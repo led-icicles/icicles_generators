@@ -62,7 +62,35 @@ enum AudioFeatureKey {
 
   /// The clip's cues (user-placed marks): the strength of the last cue,
   /// decaying like [kickPulse]; 0 without cues.
-  cuePulse;
+  cuePulse,
+
+  /// The loudness of the separated vocals (`0..1`, from the deep analysis,
+  /// `DeepAudioFeatures`); without it approximated by the mix's 300–3400 Hz
+  /// energy.
+  vocals,
+
+  /// Like [vocals] for the drums stem (approximated by [onset]).
+  drumsStem,
+
+  /// Like [vocals] for the bass stem (approximated by [bass]).
+  bassStem,
+
+  /// Like [vocals] for the remaining instruments (approximated by [mid]).
+  otherStem,
+
+  /// The melody's pitch class as a hue `0..1`: the dominant pitch class of
+  /// the harmonic stems on the circle of fifths (C = 0, G = 1/12, D = 2/12
+  /// …), so related notes get near hues; without the deep analysis the
+  /// loudest frequency ([peakFrequency]).
+  pitchHue,
+
+  /// How clearly one pitch class dominates (`0..1`; 0 in silence or noise,
+  /// and without the deep analysis).
+  pitchClarity,
+
+  /// The key's tonic around now (an estimate over ±4 s) as a hue on the
+  /// circle of fifths like [pitchHue]; 0 without the deep analysis.
+  keyHue;
 
   /// Number of keys stored as [AudioFeatures] columns.
   static const columnCount = 22;
@@ -83,8 +111,19 @@ enum AudioFeatureKey {
   /// Whether the value comes from the drum hits of the analysed audio.
   bool get isDrum => this == kickPulse || this == snarePulse || this == hihatPulse;
 
-  /// Whether the value needs the analysed audio (features or drum hits).
-  bool get usesAnalysis => isColumn || isDrum;
+  /// Whether the value comes from the separated stems of the deep analysis.
+  bool get isStem => this == vocals || this == drumsStem || this == bassStem || this == otherStem;
+
+  /// Whether the value comes from the harmony (chroma) of the deep analysis.
+  bool get isHarmony => this == pitchHue || this == pitchClarity || this == keyHue;
+
+  /// Whether the value reads the deep analysis (`BakeRequest.deep`); each
+  /// has a fallback from the mix's features without it.
+  bool get usesDeep => isStem || isHarmony;
+
+  /// Whether the value needs the analysed audio (features, drum hits or the
+  /// deep analysis — whose fallbacks read the features).
+  bool get usesAnalysis => isColumn || isDrum || usesDeep;
 
   /// Whether the key reads the clip's cues.
   bool get usesCues => this == cuePulse;

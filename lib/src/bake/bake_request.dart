@@ -2,6 +2,9 @@ import 'package:equatable/equatable.dart';
 import 'package:icicles_animation_dart/icicles_animation_dart.dart';
 
 import '../audio/audio_features.dart';
+import '../audio/audio_levels.dart';
+import '../audio/deep_audio_features.dart';
+import '../audio/deep_audio_features_codec.dart';
 import '../generator/generator.dart';
 import '../generator/generator_exception.dart';
 import '../generator/generator_info.dart';
@@ -55,6 +58,11 @@ final class BakeRequest extends Equatable {
   /// clip with cues needs no soundtrack.
   final CueHits? cues;
 
+  /// The deep analysis of the music (separated stems, harmony) on the same
+  /// clock as [audio], `null` without one. Read with [audio] only; the keys
+  /// reading it fall back to the features without it.
+  final DeepAudioFeatures? deep;
+
   /// Time on the [audio]/[tempo] clock of generator time 0 (the song time
   /// at the clip's source start).
   final Duration audioOrigin;
@@ -82,6 +90,7 @@ final class BakeRequest extends Equatable {
     this.beats,
     this.drums,
     this.cues,
+    this.deep,
     this.audioOrigin = Duration.zero,
     this.name,
     this.macros = const {},
@@ -98,6 +107,7 @@ final class BakeRequest extends Equatable {
     BeatGrid? beats,
     DrumHits? drums,
     CueHits? cues,
+    DeepAudioFeatures? deep,
     Duration audioOrigin = Duration.zero,
     String? name,
     Map<String, ParamBinding> macros = const {},
@@ -112,11 +122,21 @@ final class BakeRequest extends Equatable {
         beats: beats,
         drums: drums,
         cues: cues,
+        deep: deep,
         audioOrigin: audioOrigin,
         name: name,
         macros: macros,
         reactivity: reactivity,
       );
+
+  /// [audio] as the program reads it: levelled per window
+  /// ([adaptiveAudioLevels]) when the reactivity asks for
+  /// [AudioLevelMode.adaptive], else as analysed.
+  AudioFeatures? get levelledAudio {
+    final features = audio;
+    if (features == null || reactivity.level != AudioLevelMode.adaptive) return features;
+    return adaptiveAudioLevels(features, reactivity.levelWindow);
+  }
 
   /// Whether the bindings (or a macro one of them reads) read the analysed
   /// audio.
@@ -145,6 +165,7 @@ final class BakeRequest extends Equatable {
         beats: beats,
         drums: drums,
         cues: cues,
+        deep: deep,
         audioOrigin: audioOrigin,
         name: name,
         macros: macros,
@@ -192,6 +213,7 @@ final class BakeRequest extends Equatable {
         beats,
         drums,
         cues,
+        deep == null ? null : DeepAudioFeaturesCodec.contentHash(deep!),
         audioOrigin,
         name,
         macros,
@@ -245,6 +267,21 @@ bool paramsUseCues(List<ParamSpec> params, Map<String, ParamBinding> bindings) =
 /// [MacroBinding]s into [macros].
 bool bindingsUseCues(Map<String, ParamBinding> bindings, Map<String, ParamBinding> macros) =>
     bindings.values.any((b) => b.usesCues || _macrosOf(b).any((id) => macros[id]?.usesCues ?? false));
+
+/// Whether a generator with [info] baked with [bindings] (and
+/// [reactivity]) reads the deep analysis (then a bake needs
+/// `BakeRequest.deep`; without it the keys fall back to the features): the
+/// program does ([GeneratorInfo.usesDeepAudio]), a binding or a macro it
+/// reads has a stem/harmony key, or the reactivity follows a stem or the
+/// harmony.
+bool needsDeepFeatures(GeneratorInfo info, Map<String, ParamBinding> bindings,
+        {Map<String, ParamBinding> macros = const {}, AudioReactivity reactivity = AudioReactivity.none}) =>
+    info.usesDeepAudio || bindingsUseDeep(bindings, macros) || reactivity.usesDeepFeatures;
+
+/// Whether any of [bindings] reads the deep analysis, following the
+/// [MacroBinding]s into [macros].
+bool bindingsUseDeep(Map<String, ParamBinding> bindings, Map<String, ParamBinding> macros) =>
+    bindings.values.any((b) => b.usesDeepFeatures || _macrosOf(b).any((id) => macros[id]?.usesDeepFeatures ?? false));
 
 /// Whether any of [bindings] reads the analysed audio, following the
 /// [MacroBinding]s into [macros].

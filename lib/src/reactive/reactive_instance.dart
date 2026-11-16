@@ -85,7 +85,8 @@ final class ReactiveEngine {
   /// first frame's `dt` should be its own duration, not zero).
   ReactiveFrame step(AudioFrame audio, Duration dt) {
     final r = reactivity;
-    final raw = _range.energy(audio);
+    final stem = r.stem;
+    final raw = stem != null ? audio.stem(stem) : _range.energy(audio);
     final gated = r.threshold > 0 ? math.max(0.0, (raw - r.threshold) / (1 - r.threshold)) : raw;
     final gained = (gated * r.sensitivity).clamp(0.0, 1.0);
     _follower = _follow(_follower, gained, _follower < gained ? r.attack : r.release, dt);
@@ -146,7 +147,12 @@ final class ReactiveEngine {
     _warpedUs += ((rate ?? 1) * dt.inMicroseconds).round();
 
     final hueMode = r[ReactiveModeKind.hue];
-    final hue = hueMode?.at(hueMode.hueSource == ReactiveHueSource.frequency ? audio.peakFrequency : energy);
+    final hue = hueMode?.at(switch (hueMode.hueSource) {
+      ReactiveHueSource.energy => energy,
+      ReactiveHueSource.frequency => audio.peakFrequency,
+      ReactiveHueSource.pitch => audio.pitchHue,
+      ReactiveHueSource.key => audio.keyHue,
+    });
 
     return ReactiveFrame(
       energy: energy,
@@ -436,11 +442,16 @@ final class ReactivePostProcessor {
     final framerate = request.setup.framerate;
     final start = framerate.frameStart(index);
     final songTime = request.audioOrigin + start;
-    final audio = request.audio;
+    final audio = request.levelledAudio;
     if (audio != null) {
       final span = index == 0 ? framerate.frameDuration(0) : start - framerate.frameStart(index - 1);
       return audio.sampleAt(songTime,
-          tempo: request.tempo, beats: request.beats, drums: request.drums, cues: request.cues, span: span);
+          tempo: request.tempo,
+          beats: request.beats,
+          drums: request.drums,
+          cues: request.cues,
+          deep: request.reactivity.usesDeepFeatures ? request.deep : null,
+          span: span);
     }
     final cues = request.cues;
     if (request.tempo == null && request.beats == null && (cues == null || cues.isEmpty)) return AudioFrame.silent;
